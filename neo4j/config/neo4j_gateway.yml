@@ -1,0 +1,13 @@
+---
+# cloud_controller_uri: api.vcap.me
+service:
+  name: neo4j
+  version: "1.3"
+  description: 'Neo4j NoSQL store'
+  plans: ['free']
+  tags: ['neo4j', 'neo4j-1.3', 'nosql']
+host: localhost
+token: "0xdeadbeef"
+mbus: nats://localhost:4222
+log_level: DEBUG
+pid: /var/vcap/sys/run/neo4j_service.pid
