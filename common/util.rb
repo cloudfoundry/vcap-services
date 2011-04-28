@@ -4,7 +4,7 @@ require 'rubygems'
 require 'vcap/common'
 require 'yaml'
 
-CC_CONFIG_FILE = File.expand_path("../../../cloud_controller/config/cloud_controller.yml", __FILE__)
+CC_CONFIG_FILE = ENV['CLOUD_CONTROLLER_CONFIG'] || File.expand_path("../../../cloud_controller/config/cloud_controller.yml", __FILE__)
 
 def default_cloud_controller_uri
   puts CC_CONFIG_FILE
