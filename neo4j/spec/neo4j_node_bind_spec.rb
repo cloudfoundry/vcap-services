@@ -1,7 +1,7 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 require "spec_helper"
 require "neo4j_service/neo4j_node"
-require "neo4j"
+require "rest-client"
 
 include VCAP::Services::Neo4j
 
@@ -26,10 +26,10 @@ describe VCAP::Services::Neo4j::Node do
 
       @node = Node.new(@opts)
       @resp = @node.provision("free")
-      sleep 1
+      sleep 7
 
-      @bind_resp = @node.bind(@resp['name'], 'rw')
-      sleep 1
+      @bind_resp = @node.bind(@resp['name'],nil)
+      sleep 5
 
       EM.stop
     end
@@ -39,6 +39,7 @@ describe VCAP::Services::Neo4j::Node do
     @bind_resp.should_not be_nil
     @bind_resp['hostname'].should_not be_nil
     @bind_resp['port'].should_not be_nil
+    @bind_resp['name'].should_not be_nil
     @bind_resp['username'].should_not be_nil
     @bind_resp['password'].should_not be_nil
   end
@@ -49,25 +50,19 @@ describe VCAP::Services::Neo4j::Node do
 
   it "should allow authorized user to access the instance" do
     EM.run do
-      conn = Neo4j::Connection.new('localhost', @resp['port']).db(@resp['db'])
-      auth = conn.authenticate(@bind_resp['username'], @bind_resp['password'])
-      auth.should be_true
-      coll = conn.collection('neo4j_unit_test')
-      coll.insert({'a' => 1})
-      coll.find()
-      coll.count().should == 1
+      response = neo4j_connect()
+      response.code.should == 200
+      result = JSON.parse(response.body)
+      result["reference_node"].should_not be_nil
       EM.stop
     end
   end
 
   it "should not allow unauthorized user to access the instance" do
     EM.run do
-      conn = Neo4j::Connection.new('localhost', @resp['port']).db(@resp['db'])
       begin
-        coll = conn.collection('neo4j_unit_test')
-        coll.insert({'a' => 1})
-        coll.find()
-        coll.count().should == 1
+        response = neo4j_connect(nil,nil);
+        response.code.should == 200
       rescue => e
       end
       e.should_not be_nil
@@ -77,13 +72,8 @@ describe VCAP::Services::Neo4j::Node do
 
   it "should not allow valid user with empty password to access the instance" do
     EM.run do
-      conn = Neo4j::Connection.new('localhost', @resp['port']).db(@resp['db'])
       begin
-        coll = conn.collection('neo4j_unit_test')
-        auth = conn.authenticate(@bind_resp['login'], '')
-        auth.should be_false
-        coll.insert({'a' => 1})
-        coll.find()
+        response = neo4j_connect(@bind_resp['username'],nil)
       rescue => e
       end
       e.should_not be_nil
@@ -104,12 +94,7 @@ describe VCAP::Services::Neo4j::Node do
   it "should not allow user to access the instance after unbind" do
     EM.run do
       begin
-        conn = Neo4j::Connection.new('localhost', @resp['port']).db(@resp['db'])
-        auth = conn.authenticate(@bind_resp['login'], @bind_resp['secret'])
-        auth.should be_false
-        coll = conn.collection('neo4j_unit_test')
-        coll.insert({'a' => 1})
-        coll.find()
+        neo4j_connect()
       rescue => e
         e.should_not be_nil
       end
@@ -125,7 +110,7 @@ describe VCAP::Services::Neo4j::Node do
 
       e = nil
       begin
-        conn = Neo4j::Connection.new('localhost', @resp[:port]).db('local')
+        neo4j_connect(nil,nil)
       rescue => e
       end
       e.should_not be_nil

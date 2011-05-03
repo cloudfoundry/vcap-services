@@ -2,8 +2,8 @@
 # cloud_controller_uri: api.vcap.me
 service:
   name: neo4j
-  version: "1.3"
-  description: 'Neo4j NoSQL store'
+  version: "1.4.M01"
+  description: 'Neo4j NOSQL store'
   plans: ['free']
   tags: ['neo4j', 'neo4j-1.3', 'nosql']
 host: localhost

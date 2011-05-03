@@ -1,7 +1,7 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 require "spec_helper"
 require "neo4j_service/neo4j_node"
-require "neo4j"
+require "rest-client"
 
 include VCAP::Services::Neo4j
 
@@ -26,14 +26,23 @@ describe VCAP::Services::Neo4j::Node do
       @original_memory = @node.available_memory
 
       @resp = @node.provision("free")
-      sleep 1
       EM.stop
+      sleep 7
+    end
+  end
+
+  after :all do
+    return unless @resp['name']
+    EM.run do
+      @node.unprovision(@resp['name'],nil)
+      EM.stop
+      sleep 7
     end
   end
 
   it "should have valid response" do
     @resp.should_not be_nil
-    puts @resp
+    puts @resp.inspect
     inst_name = @resp['name']
     inst_name.should_not be_nil
     inst_name.should_not == ""
@@ -49,11 +58,8 @@ describe VCAP::Services::Neo4j::Node do
 
   it "should not allow unauthorized user to access the instance" do
     EM.run do
-      conn = Neo4j::Connection.new('localhost', @resp['port']).db(@resp['db'])
       begin
-        coll = conn.collection('neo4j_unit_test')
-        coll.insert({'a' => 1})
-        coll.count()
+        neo4j_connect(nil,nil);
       rescue Exception => e
         @logger.debug e
       end
@@ -66,10 +72,9 @@ describe VCAP::Services::Neo4j::Node do
   it "should be able to unprovision an existing instance" do
     EM.run do
       @node.unprovision(@resp['name'], [])
-
       e = nil
       begin
-        conn = Neo4j::Connection.new('localhost', @resp[:port]).db('local')
+        neo4j_connect(nil,nil);
       rescue => e
       end
       e.should_not be_nil

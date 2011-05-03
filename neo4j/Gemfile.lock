@@ -15,7 +15,6 @@ GEM
     builder (3.0.0)
     ci_reporter (1.6.4)
       builder (>= 2.1.2)
-    crack (0.1.8)
     daemons (1.1.2)
     data_objects (0.10.3)
       addressable (~> 2.1)
@@ -70,20 +69,18 @@ GEM
     escape_utils (0.2.3)
     eventmachine (0.12.10)
     fastercsv (1.5.4)
-    httparty (0.7.4)
-      crack (= 0.1.8)
     json (1.4.6)
     json_pure (1.5.1)
+    mime-types (1.16)
     nats (0.4.8)
       daemons (>= 1.1.0)
       eventmachine (>= 0.12.10)
       json_pure (>= 1.5.1)
-    neography (0.0.12)
-      httparty (~> 0.7.3)
-      json
     rack (1.2.2)
     rake (0.8.7)
     rcov (0.9.9)
+    rest-client (1.6.1)
+      mime-types (>= 1.16)
     rspec (2.5.0)
       rspec-core (~> 2.5.0)
       rspec-expectations (~> 2.5.0)
@@ -116,9 +113,9 @@ DEPENDENCIES
   em-http-request
   eventmachine
   nats (>= 0.4.8)
-  neography
   rake
   rcov
+  rest-client
   rspec
   ruby-hmac
   sinatra

@@ -10,7 +10,7 @@ gem "do_sqlite3"
 gem "dm-sqlite-adapter"
 gem "sinatra"
 gem "thin"
-gem "neography"
+gem "rest-client"
 
 gem 'vcap_common', :path => '../../common'
 

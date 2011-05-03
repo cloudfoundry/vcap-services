@@ -226,20 +226,24 @@ class VCAP::Services::Neo4j::Node
 
       port = provisioned_service.port
       password = provisioned_service.password
-      log_file = File.join(dir, "data/log/neo4j.log")
+      login = provisioned_service.username
 
       dir = File.join(@base_dir, provisioned_service.name)
+      log_file = File.join(dir, "data/log/neo4j.log")
+
       data_dir = File.join(dir, "data/graph.db")
       conf_dir = File.join(dir, "conf")
 
       FileUtils.mkdir_p(dir)
-      `cd #{dir} && tar xvzf #{@neo4j_path}/neo4j-1.3-unix.tar.gz`
+      $stderr.puts "Installing Neo4j to #{dir} (base dir #{@base_dir}) extracting from #{@neo4j_path} port #{port} password #{password} #{login}"
+      `cd #{dir} && tar -xz --strip-components=1 -f #{@neo4j_path}/neo4j-server.tgz`
+      `cp #{@neo4j_path}/neo4j-hosting-extension.jar #{dir}/system/lib`
       FileUtils.mkdir_p(data_dir)
       File.open(File.join(conf_dir, "neo4j-server.properties"), "w") {|f| f.write(@config_template.result(binding))}
-      File.open(File.join(conf_dir, "neo4j.properties"), "w") {|f| f.write(@db_template.result(binding))}
-      File.open(File.join(conf_dir, "log4j.properties"), "w") {|f| f.write(@log_template.result(binding))}
+#      File.open(File.join(conf_dir, "neo4j.properties"), "w") {|f| f.write(@db_template.result(binding))}
+#      File.open(File.join(conf_dir, "log4j.properties"), "w") {|f| f.write(@log_template.result(binding))}
 
-      exec("#{dir}/bin/neo4j start")
+       exec("#{dir}/bin/neo4j start")
     end
   end
 

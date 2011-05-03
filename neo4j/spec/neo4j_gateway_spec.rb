@@ -3,7 +3,7 @@ require "spec_helper"
 require "vcap/common"
 require "neo4j_service/neo4j_provisioner"
 require "neo4j_service/neo4j_node"
-require "neo4j"
+require "rest-client"
 
 
 include VCAP::Services::Neo4j

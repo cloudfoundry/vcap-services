@@ -31,6 +31,7 @@ end
 
 def shutdown(neo4j_node)
     neo4j_node.shutdown
+    sleep 5
     EM.stop
 end
 
@@ -66,15 +67,18 @@ end
 def get_node_config()
   config_file = File.join(File.dirname(__FILE__), "../config/neo4j_node.yml")
   config = YAML.load_file(config_file)
-  neo4j_conf_template = File.join(File.dirname(__FILE__), "../resources/neo4j-server.properties.erb")
+  neo4j_server_conf_template = File.join(File.dirname(__FILE__), "../resources/neo4j-server.properties.erb")
+  neo4j_conf_template = File.join(File.dirname(__FILE__), "../resources/neo4j.properties.erb")
+  log4j_conf_template = File.join(File.dirname(__FILE__), "../resources/log4j.properties.erb")
   options = {
     :logger => Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily"),
-    :neo4jd_path => parse_property(config, "neo4jd_path", String),
-    :ip_route => parse_property(config, "ip_route", String, :optional => true),
+    :neo4j_path => parse_property(config, "neo4j_path", String),
     :available_memory => parse_property(config, "available_memory", Integer),
     :node_id => parse_property(config, "node_id", String),
     :mbus => parse_property(config, "mbus", String),
-    :config_template => neo4j_conf_template,
+    :config_template => neo4j_server_conf_template,
+    :neo4j_template => neo4j_conf_template,
+    :log4j_template => log4j_conf_template,
     :port_range => parse_property(config, "port_range", Range),
     :max_memory => parse_property(config, "max_memory", Integer),
     :base_dir => '/tmp/neo4j/instances',
@@ -82,6 +86,12 @@ def get_node_config()
   }
   options[:logger].level = Logger::FATAL
   options
+end
+
+def neo4j_connect(user=@bind_resp['username'],password=@bind_resp['password'],port=@resp['port']) 
+  auth = ""
+  auth = "#{user}:#{password}@" if user
+  RestClient.get "http://#{auth}localhost:#{port}/db/data/"
 end
 
 def get_provisioner_config()
@@ -111,6 +121,7 @@ def start_server(opts)
   opts = opts.merge({:provisioner => sp})
   sg = VCAP::Services::AsynchronousServiceGateway.new(opts)
   Thin::Server.start(opts[:host], opts[:port], sg)
+  sleep 7
 end
 
 
