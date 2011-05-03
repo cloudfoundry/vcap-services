@@ -11,7 +11,6 @@ $LOAD_PATH.unshift(File.expand_path("../../lib", __FILE__))
 require "neo4j_service/neo4j_node"
 
 neo4j_server_conf_template = File.expand_path("../../resources/neo4j-server.properties.erb", __FILE__)
-$stderr.puts neo4j_server_conf_template
 neo4j_conf_template = File.expand_path("../../resources/neo4j.properties.erb", __FILE__)
 log4j_conf_template = File.expand_path("../../resources/log4j.properties.erb", __FILE__)
 config_file = File.expand_path("../../config/neo4j_node.yml", __FILE__)

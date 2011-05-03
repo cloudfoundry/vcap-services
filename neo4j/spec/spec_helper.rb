@@ -20,11 +20,13 @@ def is_port_open?(host, port)
         s = TCPSocket.new(host, port)
         s.close
         return true
-      rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH
+      rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH => e
+        $stderr.puts "Trying to connect to #{host}:#{port} #{e.inspect}"
         return false
       end
     end
-  rescue Timeout::Error
+  rescue Timeout::Error => e
+        $stderr.puts "Trying to connect to #{host}:#{port} #{e.inspect}"
   end
   false
 end

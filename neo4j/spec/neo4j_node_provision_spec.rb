@@ -31,15 +31,6 @@ describe VCAP::Services::Neo4j::Node do
     end
   end
 
-  after :all do
-    return unless @resp['name']
-    EM.run do
-      @node.unprovision(@resp['name'],nil)
-      EM.stop
-      sleep 7
-    end
-  end
-
   it "should have valid response" do
     @resp.should_not be_nil
     puts @resp.inspect

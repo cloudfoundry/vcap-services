@@ -210,15 +210,9 @@ class VCAP::Services::Neo4j::Node
     @logger.debug("Starting: #{provisioned_service.pretty_inspect}")
 
     memory = @max_memory
+    dir = File.join(@base_dir, provisioned_service.name)
 
-    pid = fork
-    if pid
-      @logger.debug("Service #{provisioned_service.name} started with pid #{pid}")
-      @available_memory -= memory
-      # In parent, detach the child.
-      Process.detach(pid)
-      pid
-    else
+    fork do 
       $0 = "Starting Neo4j service: #{provisioned_service.name}"
       close_fds
 
@@ -228,14 +222,13 @@ class VCAP::Services::Neo4j::Node
       password = provisioned_service.password
       login = provisioned_service.username
 
-      dir = File.join(@base_dir, provisioned_service.name)
       log_file = File.join(dir, "data/log/neo4j.log")
 
       data_dir = File.join(dir, "data/graph.db")
       conf_dir = File.join(dir, "conf")
 
       FileUtils.mkdir_p(dir)
-      $stderr.puts "Installing Neo4j to #{dir} (base dir #{@base_dir}) extracting from #{@neo4j_path} port #{port} password #{password} #{login}"
+      @logger.debug("Installing Neo4j to #{dir} (base dir #{@base_dir}) extracting from #{@neo4j_path} port #{port} name #{name} login #{login}")
       `cd #{dir} && tar -xz --strip-components=1 -f #{@neo4j_path}/neo4j-server.tgz`
       `cp #{@neo4j_path}/neo4j-hosting-extension.jar #{dir}/system/lib`
       FileUtils.mkdir_p(data_dir)
@@ -245,6 +238,15 @@ class VCAP::Services::Neo4j::Node
 
        exec("#{dir}/bin/neo4j start")
     end
+    pid = Process.wait
+    puts "Child terminated, pid = #{pid}, exit code = #{$? >> 8}"
+
+    pid = `[ -f #{dir}/data/neo4j-server.pid ] && cat #{dir}/data/neo4j-server.pid`
+    if pid
+      @logger.debug("Service #{provisioned_service.name} started with pid #{pid}")
+      @available_memory -= memory
+    end
+    pid
   end
 
   def memory_for_service(provisioned_service)
