@@ -12,3 +12,4 @@ token: "0xdeadbeef"
 log_level: DEBUG
 mbus: nats://localhost:4222
 pid: /var/vcap/sys/run/redis_service.pid
+# allow_over_provisioning: false
