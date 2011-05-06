@@ -26,7 +26,7 @@ describe VCAP::Services::Neo4j::Node do
 
       @node = Node.new(@opts)
       @resp = @node.provision("free")
-      sleep 7
+      sleep 8 
 
       @bind_resp = @node.bind(@resp['name'],nil)
       sleep 5

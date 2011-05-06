@@ -178,14 +178,20 @@ class VCAP::Services::Neo4j::Node
     provisioned_service = ProvisionedService.get(name)
     raise "Could not find service: #{name}" if provisioned_service.nil?
 
+    username = UUIDTools::UUID.random_create.to_s
+    password = UUIDTools::UUID.random_create.to_s
+    
+    ro = bind_opts.include?('ro')
+    r = RestClient.get "http://#{provisioned_service.username}:#{provisioned_service.password}@#{@local_ip}:#{provisioned_service.port}/admin/add-user-#{ro ? 'ro' : 'rw'}?user=#{username}:#{password}"
+    raise "Failed to add user:  #{username} status: #{r.code} message: #{r.to_str}" unless r.code == 200
     response = {
       "hostname" => @local_ip,
       "port"    => provisioned_service.port,
-      "username" => provisioned_service.username,
-      "password" => provisioned_service.password,
+      "username" => username,
+      "password" => password,
       "name"     => provisioned_service.name,
     }
-
+    
     @logger.debug("response: #{response}")
     response
   rescue => e
@@ -199,8 +205,12 @@ class VCAP::Services::Neo4j::Node
     name = credentials['name']
     provisioned_service = ProvisionedService.get(name)
     raise "Could not find service: #{name}" if provisioned_service.nil?
+    username = credentials['username']
+    password = credentials['password']
 
-    @logger.debug("Successfully unbind #{credentials}")
+    r = RestClient.get "http://#{provisioned_service.username}:#{provisioned_service.password}@#{@local_ip}:#{provisioned_service.port}/admin/remove-user?user=#{username}:#{password}"
+    raise "Failed to remove user:  #{username} status: #{r.code} message: #{r.to_str}" unless r.code == 200
+    @logger.debug("Successfully unbound #{credentials}")
   rescue => e
     @logger.warn(e)
     nil
@@ -211,32 +221,26 @@ class VCAP::Services::Neo4j::Node
 
     memory = @max_memory
     dir = File.join(@base_dir, provisioned_service.name)
-
+    FileUtils.mkdir_p(dir)
     fork do 
       $0 = "Starting Neo4j service: #{provisioned_service.name}"
       close_fds
-
-      # todo extract neo4j server to dir
 
       port = provisioned_service.port
       password = provisioned_service.password
       login = provisioned_service.username
 
-      log_file = File.join(dir, "data/log/neo4j.log")
-
       data_dir = File.join(dir, "data/graph.db")
       conf_dir = File.join(dir, "conf")
 
-      FileUtils.mkdir_p(dir)
-      @logger.debug("Installing Neo4j to #{dir} (base dir #{@base_dir}) extracting from #{@neo4j_path} port #{port} name #{name} login #{login}")
-      `cd #{dir} && tar -xz --strip-components=1 -f #{@neo4j_path}/neo4j-server.tgz`
-      `cp #{@neo4j_path}/neo4j-hosting-extension.jar #{dir}/system/lib`
+      FileUtils.chdir(dir)
       FileUtils.mkdir_p(data_dir)
+      @logger.debug("Installing Neo4j to #{dir} (base dir #{@base_dir}) extracting from #{@neo4j_path} port #{port} name #{provisioned_service.name} login #{login}")
+      $stderr.puts("Installing Neo4j to #{dir} (base dir #{@base_dir}) extracting from #{@neo4j_path} port #{port} name #{provisioned_service.name} login #{login}")
+      `tar -xz --strip-components=1 -f #{@neo4j_path}/neo4j-server.tgz`
+      `cp #{@neo4j_path}/neo4j-hosting-extension.jar #{dir}/system/lib`
       File.open(File.join(conf_dir, "neo4j-server.properties"), "w") {|f| f.write(@config_template.result(binding))}
-#      File.open(File.join(conf_dir, "neo4j.properties"), "w") {|f| f.write(@db_template.result(binding))}
-#      File.open(File.join(conf_dir, "log4j.properties"), "w") {|f| f.write(@log_template.result(binding))}
-
-       exec("#{dir}/bin/neo4j start")
+      exec("#{dir}/bin/neo4j start")
     end
     pid = Process.wait
     puts "Child terminated, pid = #{pid}, exit code = #{$? >> 8}"
