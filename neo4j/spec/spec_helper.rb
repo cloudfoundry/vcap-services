@@ -90,10 +90,14 @@ def get_node_config()
   options
 end
 
-def neo4j_connect(user=@bind_resp['username'],password=@bind_resp['password'],port=@resp['port']) 
+def neo4j_url(user=@bind_resp['username'],password=@bind_resp['password'],port=@resp['port']) 
   auth = ""
   auth = "#{user}:#{password}@" if user
-  RestClient.get "http://#{auth}localhost:#{port}/db/data/"
+  "http://#{auth}localhost:#{port}/db/data/"
+end
+
+def neo4j_connect(user=@bind_resp['username'],password=@bind_resp['password'],port=@resp['port']) 
+  RestClient.get neo4j_url(user,password,port) 
 end
 
 def get_provisioner_config()

@@ -181,7 +181,7 @@ class VCAP::Services::Neo4j::Node
     username = UUIDTools::UUID.random_create.to_s
     password = UUIDTools::UUID.random_create.to_s
     
-    ro = bind_opts.include?('ro')
+    ro = bind_opts == "ro"
     r = RestClient.get "http://#{provisioned_service.username}:#{provisioned_service.password}@#{@local_ip}:#{provisioned_service.port}/admin/add-user-#{ro ? 'ro' : 'rw'}?user=#{username}:#{password}"
     raise "Failed to add user:  #{username} status: #{r.code} message: #{r.to_str}" unless r.code == 200
     response = {

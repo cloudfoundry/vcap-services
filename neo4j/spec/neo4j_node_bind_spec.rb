@@ -28,7 +28,7 @@ describe VCAP::Services::Neo4j::Node do
       @resp = @node.provision("free")
       sleep 8 
 
-      @bind_resp = @node.bind(@resp['name'],nil)
+      @bind_resp = @node.bind(@resp['name'],'rw')
       sleep 5
 
       EM.stop
@@ -54,6 +54,18 @@ describe VCAP::Services::Neo4j::Node do
       response.code.should == 200
       result = JSON.parse(response.body)
       result["reference_node"].should_not be_nil
+      EM.stop
+    end
+  end
+
+  it "should allow authorized user to create data in the instance" do
+    EM.run do
+      url = neo4j_url() + "node"
+      response = RestClient.post url, {:accept => :json}
+      response.code.should == 201
+      puts response.headers.inspect
+      node_url = neo4j_url(nil) + "node/"
+      response.headers[:location].should =~ /#{node_url}\d+/
       EM.stop
     end
   end
