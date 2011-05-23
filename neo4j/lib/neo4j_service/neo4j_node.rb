@@ -12,6 +12,7 @@ require "uuidtools"
 require 'vcap/common'
 require 'vcap/component'
 require "neo4j_service/common"
+require 'rest-client'
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
 require 'base/node'
@@ -103,7 +104,29 @@ class VCAP::Services::Neo4j::Node
   def shutdown
     super
     @logger.info("Shutting down instances..")
-    ProvisionedService.all.each { |provisioned_service| provisioned_service.kill(:SIGTERM) }
+    ProvisionedService.all.each do |service|
+      @logger.info("Shutting down #{service}")
+    end
+    ProvisionedService.all.each do |service|
+      stop_service(service)
+    end
+  end
+
+  def stop_service(service)
+      begin
+        @logger.info("Stopping #{service.name} PORT #{service.port} PID #{service.pid}")
+        init_script = File.join(@base_dir,service.name,"bin","neo4j")
+        @logger.info("Calling #{init_script} stop")
+        fork do
+          close_fds
+          exec("#{init_script} stop")
+        end
+        Process.wait
+
+      rescue => e
+        @logger.error("Error stopping service #{service.name} PORT #{service.port} PID #{service.pid}: #{e}")
+      end
+      service.kill(:SIGTERM) if service.running?
   end
 
   def announcement
@@ -155,11 +178,12 @@ class VCAP::Services::Neo4j::Node
 
   def cleanup_service(provisioned_service)
     @logger.debug("Killing #{provisioned_service.name} started with pid #{provisioned_service.pid}")
+
+    stop_service(provisioned_service)
+
     raise "Could not cleanup service: #{provisioned_service.errors.pretty_inspect}" unless provisioned_service.destroy
 
     Process.kill(9, provisioned_service.pid) if provisioned_service.running?
-
-    dir = File.join(@base_dir, provisioned_service.name)
 
     EM.defer { FileUtils.rm_rf(dir) }
 
@@ -182,7 +206,7 @@ class VCAP::Services::Neo4j::Node
     password = UUIDTools::UUID.random_create.to_s
     
     ro = bind_opts == "ro"
-    r = RestClient.get "http://#{provisioned_service.username}:#{provisioned_service.password}@#{@local_ip}:#{provisioned_service.port}/admin/add-user-#{ro ? 'ro' : 'rw'}?user=#{username}:#{password}"
+    r = RestClient.post "http://#{provisioned_service.username}:#{provisioned_service.password}@#{@local_ip}:#{provisioned_service.port}/admin/add-user-#{ro ? 'ro' : 'rw'}","user=#{username}:#{password}"
     raise "Failed to add user:  #{username} status: #{r.code} message: #{r.to_str}" unless r.code == 200
     response = {
       "hostname" => @local_ip,
@@ -191,10 +215,11 @@ class VCAP::Services::Neo4j::Node
       "password" => password,
       "name"     => provisioned_service.name,
     }
-    
+    $stderr.puts "bind #{name} #{bind_opts} response #{response}"
     @logger.debug("response: #{response}")
     response
   rescue => e
+    $stderr.puts "bind #{name} #{bind_opts} exception #{e}"
     @logger.warn(e)
     nil
   end
@@ -207,48 +232,66 @@ class VCAP::Services::Neo4j::Node
     raise "Could not find service: #{name}" if provisioned_service.nil?
     username = credentials['username']
     password = credentials['password']
-
-    r = RestClient.get "http://#{provisioned_service.username}:#{provisioned_service.password}@#{@local_ip}:#{provisioned_service.port}/admin/remove-user?user=#{username}:#{password}"
+    r = RestClient.post "http://#{provisioned_service.username}:#{provisioned_service.password}@#{@local_ip}:#{provisioned_service.port}/admin/remove-user", "user=#{username}:#{password}"
     raise "Failed to remove user:  #{username} status: #{r.code} message: #{r.to_str}" unless r.code == 200
     @logger.debug("Successfully unbound #{credentials}")
+    true
   rescue => e
     @logger.warn(e)
     nil
+  end
+
+  def update_config(dir,provisioned_service) 
+    data_dir = File.join(dir, "data","graph.db")
+    port = provisioned_service.port
+    password = provisioned_service.password
+    login = provisioned_service.username
+    
+    @logger.info("Updating Neo4j in #{dir} with port #{port} admin-login #{login}")
+    File.open(File.join(dir, "conf","neo4j-server.properties"), "w") {|f| f.write(@config_template.result(binding))}
+  end
+
+  def install_server(dir,provisioned_service)
+    @logger.info("Installing Neo4j to #{dir} from #{@neo4j_path} name #{provisioned_service.name}")
+    `tar -xz --strip-components=1 -f #{@neo4j_path}/neo4j-server.tgz`
+    `rm -rf #{dir}/docs #{dir}/examples`
+    `cp #{@neo4j_path}/neo4j-hosting-extension.jar #{dir}/system/lib`
+    `cp #{@neo4j_path}/neo4j  #{dir}/bin`
+    File.open(File.join(dir, "conf","neo4j.properties"), "a") {|f| f.write("\nenable_remote_shell=false\nenable_online_backup=false\n")}
   end
 
   def start_instance(provisioned_service)
     @logger.debug("Starting: #{provisioned_service.pretty_inspect}")
 
     memory = @max_memory
-    dir = File.join(@base_dir, provisioned_service.name)
+    name = provisioned_service.name
+    dir = File.join(@base_dir, name)
     FileUtils.mkdir_p(dir)
+
     fork do 
-      $0 = "Starting Neo4j service: #{provisioned_service.name}"
+      $0 = "Starting Neo4j service: #{name}"
       close_fds
 
-      port = provisioned_service.port
-      password = provisioned_service.password
-      login = provisioned_service.username
-
-      data_dir = File.join(dir, "data/graph.db")
-      conf_dir = File.join(dir, "conf")
-
+      data_dir = File.join(dir, "data","graph.db")
+      
       FileUtils.chdir(dir)
-      FileUtils.mkdir_p(data_dir)
-      @logger.debug("Installing Neo4j to #{dir} (base dir #{@base_dir}) extracting from #{@neo4j_path} port #{port} name #{provisioned_service.name} login #{login}")
-      $stderr.puts("Installing Neo4j to #{dir} (base dir #{@base_dir}) extracting from #{@neo4j_path} port #{port} name #{provisioned_service.name} login #{login}")
-      `tar -xz --strip-components=1 -f #{@neo4j_path}/neo4j-server.tgz`
-      `cp #{@neo4j_path}/neo4j-hosting-extension.jar #{dir}/system/lib`
-      File.open(File.join(conf_dir, "neo4j-server.properties"), "w") {|f| f.write(@config_template.result(binding))}
-      exec("#{dir}/bin/neo4j start")
+
+      unless File.directory?(data_dir)
+        install_server(dir,provisioned_service)
+      end
+      update_config(dir,provisioned_service)
+
+      init_script=File.join(dir,"bin","neo4j")
+      exec("#{init_script} start")
     end
     pid = Process.wait
     puts "Child terminated, pid = #{pid}, exit code = #{$? >> 8}"
-
-    pid = `[ -f #{dir}/data/neo4j-server.pid ] && cat #{dir}/data/neo4j-server.pid`
+    pidfile = File.join(dir,"data","running.pid")
+    pid = `[ -f #{pidfile} ] && cat #{pidfile}`
     if pid
-      @logger.debug("Service #{provisioned_service.name} started with pid #{pid}")
+      @logger.debug("Service #{name} started with pid #{pid}")
       @available_memory -= memory
+      pid = pid.to_i
     end
     pid
   end

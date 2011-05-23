@@ -33,6 +33,7 @@ end
 
 def shutdown(neo4j_node)
     neo4j_node.shutdown
+    $stderr.puts "Shutting down neo4j-node #{neo4j_node}"
     sleep 5
     EM.stop
 end
@@ -87,6 +88,7 @@ def get_node_config()
     :local_db => 'sqlite3:/tmp/neo4j/neo4j_node.db'
   }
   options[:logger].level = Logger::FATAL
+  options[:port_range] = (options[:port_range].last+1)..(options[:port_range].last+10)
   options
 end
 
