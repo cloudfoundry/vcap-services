@@ -113,20 +113,21 @@ class VCAP::Services::Neo4j::Node
   end
 
   def stop_service(service)
-      begin
-        @logger.info("Stopping #{service.name} PORT #{service.port} PID #{service.pid}")
-        init_script = File.join(@base_dir,service.name,"bin","neo4j")
-        @logger.info("Calling #{init_script} stop")
-        fork do
-          close_fds
-          exec("#{init_script} stop")
-        end
-        Process.wait
-
-      rescue => e
-        @logger.error("Error stopping service #{service.name} PORT #{service.port} PID #{service.pid}: #{e}")
+    begin
+      @logger.info("Stopping #{service.name} PORT #{service.port} PID #{service.pid}")
+      init_script = File.join(@base_dir,service.name,"bin","neo4j")
+      @logger.info("Calling #{init_script} stop")
+      
+      fork do
+        handle = IO.popen("#{init_script} stop", { close_fds => 1 })
+        @logger.debug("finished stop #{ handle }")
       end
-      service.kill(:SIGTERM) if service.running?
+      Process.wait      
+      
+    rescue => e
+      @logger.error("Error stopping service #{service.name} PORT #{service.port} PID #{service.pid}: #{e}")
+    end
+    service.kill(:SIGTERM) if service.running?
   end
 
   def announcement
@@ -184,7 +185,8 @@ class VCAP::Services::Neo4j::Node
     raise "Could not cleanup service: #{provisioned_service.errors.pretty_inspect}" unless provisioned_service.destroy
 
     Process.kill(9, provisioned_service.pid) if provisioned_service.running?
-
+    dir = File.join(@base_dir, provisioned_service.name)
+    
     EM.defer { FileUtils.rm_rf(dir) }
 
     @available_memory += provisioned_service.memory
@@ -257,7 +259,7 @@ class VCAP::Services::Neo4j::Node
     `rm -rf #{dir}/docs #{dir}/examples`
     `cp #{@neo4j_path}/neo4j-hosting-extension.jar #{dir}/system/lib`
     `cp #{@neo4j_path}/neo4j  #{dir}/bin`
-    File.open(File.join(dir, "conf","neo4j.properties"), "a") {|f| f.write("\nenable_remote_shell=false\nenable_online_backup=false\n")}
+    File.open(File.join(dir, "conf","neo4j.properties"), "a") {|f| f.write("\nenable_remote_shell=false\nenable_online_backup=false\nenable_statistic_collector=false\n")}
   end
 
   def start_instance(provisioned_service)
@@ -268,24 +270,27 @@ class VCAP::Services::Neo4j::Node
     dir = File.join(@base_dir, name)
     FileUtils.mkdir_p(dir)
 
-    fork do 
-      $0 = "Starting Neo4j service: #{name}"
-      close_fds
+    $0 = "Starting Neo4j service: #{name}"
 
-      data_dir = File.join(dir, "data","graph.db")
-      
-      FileUtils.chdir(dir)
-
-      unless File.directory?(data_dir)
+    
+    data_dir = File.join(dir, "data","graph.db")
+    
+    FileUtils.chdir(dir)
+    
+    unless File.directory?(data_dir)
         install_server(dir,provisioned_service)
-      end
-      update_config(dir,provisioned_service)
-
-      init_script=File.join(dir,"bin","neo4j")
-      exec("#{init_script} start")
     end
-    pid = Process.wait
-    puts "Child terminated, pid = #{pid}, exit code = #{$? >> 8}"
+    update_config(dir,provisioned_service)
+    
+    init_script=File.join(dir,"bin","neo4j")
+    @logger.info("Calling #{init_script} start")
+
+    fork do
+      handle = IO.popen("#{init_script} start", { close_fds => 1 })
+      @logger.debug("Init finished, pid = '#{ handle.pid }' #{ handle }, exit code = #{$? >> 8}")
+    end
+    Process.wait
+
     pidfile = File.join(dir,"data","running.pid")
     pid = `[ -f #{pidfile} ] && cat #{pidfile}`
     if pid
