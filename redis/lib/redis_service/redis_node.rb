@@ -88,6 +88,7 @@ class VCAP::Services::Redis::Node
     VCAP::Component.register(:nats => @nats,
                              :type => 'Redis-Service-Node',
                              :host => @local_ip,
+                             :index => options[:index],
                              :config => options)
   end
 

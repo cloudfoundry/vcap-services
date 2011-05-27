@@ -45,6 +45,7 @@ end
 
 options = {
   :logger => logger,
+  :index => parse_property(config, "index", Integer, :optional => true),
   :base_dir => parse_property(config, "base_dir", String),
   :available_storage => parse_property(config, "available_storage", Integer),
   :max_db_size => parse_property(config, "max_db_size", Integer),

@@ -43,6 +43,7 @@ class VCAP::Services::Mysql::Provisioner
     VCAP::Component.register(:nats => @service_nats,
                             :type => 'Mysql-Service',
                             :host => @local_ip,
+                            :index => @opts[:index],
                             :config => @opts)
     EM.add_periodic_timer(60) {process_nodes}
     self

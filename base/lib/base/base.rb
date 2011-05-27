@@ -29,6 +29,7 @@ class VCAP::Services::Base::Base
       :nats => @node_nats,
       :type => service_description,
       :host => @local_ip,
+      :index => options[:index],
       :config => options
     )
   end

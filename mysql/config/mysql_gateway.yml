@@ -7,6 +7,7 @@ service:
   plans: ['free']
   tags: ['mysql', 'mysql-5.1', 'relational']
 host: localhost
+index: 0
 token: "0xdeadbeef"
 log_level: DEBUG
 mysql_mbus: nats://localhost:4222

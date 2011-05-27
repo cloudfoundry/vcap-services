@@ -3,6 +3,7 @@ local_db: sqlite3:/var/vcap/services/mysql/mysql_node.db
 base_dir: /var/vcap/services/mysql/
 ip_route: 127.0.0.1
 mbus: nats://localhost:4222
+index: 0
 log_level: DEBUG
 pid: /var/vcap/sys/run/mysql_node.pid
 available_storage: 1024

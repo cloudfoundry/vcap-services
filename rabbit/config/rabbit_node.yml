@@ -4,6 +4,7 @@ base_dir: /var/vcap/services/rabbit/
 rabbit_ctl: rabbitmqctl
 rabbit_server: rabbitmq-server
 mbus: nats://localhost:4222
+index: 0
 log_level: DEBUG
 local_ip: 127.0.0.1
 available_memory: 4096

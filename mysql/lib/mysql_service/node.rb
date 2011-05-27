@@ -75,6 +75,7 @@ class VCAP::Services::Mysql::Node
     VCAP::Component.register(:nats => @nats,
                             :type => 'Mysql-Service-Node',
                             :host => @local_ip,
+                            :index => options[:index],
                             :config => options)
 
   end

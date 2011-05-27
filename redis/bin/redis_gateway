@@ -69,6 +69,7 @@ config[:service][:url]   = "http://#{config[:host]}:#{config[:port]}"
 EM.run do
   sp = VCAP::Services::Redis::Provisioner.new(
     :logger   => logger,
+    :index    => config[:index],
     :version  => config[:service][:version],
     :local_ip => config[:host],
     :service_mbus => config[:service_mbus],
