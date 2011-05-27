@@ -13,6 +13,8 @@ require 'vcap/common'
 require 'vcap/component'
 require "neo4j_service/common"
 require 'rest-client'
+require 'net/http'
+require 'uri'
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
 require 'base/node'
@@ -151,7 +153,7 @@ class VCAP::Services::Neo4j::Node
     provisioned_service.memory    = @max_memory
     provisioned_service.pid       = start_instance(provisioned_service)
 
-    unless provisioned_service.save
+    unless provisioned_service.pid && provisioned_service.save
       cleanup_service(provisioned_service)
       raise "Could not save entry: #{provisioned_service.errors.pretty_inspect}"
     end
@@ -296,9 +298,23 @@ class VCAP::Services::Neo4j::Node
     if pid
       @logger.debug("Service #{name} started with pid #{pid}")
       @available_memory -= memory
-      pid = pid.to_i
+      return pid.to_i if wait_for_server_start(provisioned_service)
     end
-    pid
+    nil
+  end
+
+  def wait_for_server_start(provisioned_service, seconds = 5)
+    url = URI.parse("http://#{provisioned_service.username}:#{provisioned_service.password}@#{@local_ip}:#{provisioned_service.port}/admin")
+    while seconds > 0
+      begin
+        r = Net::HTTP.get_response(url)
+        return true if r.code.to_i == 302
+      rescue
+      end
+      seconds -= 1
+      sleep 1
+    end
+    false
   end
 
   def memory_for_service(provisioned_service)

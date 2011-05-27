@@ -26,8 +26,18 @@ describe VCAP::Services::Neo4j::Node do
       @original_memory = @node.available_memory
 
       @resp = @node.provision("free")
+      sleep 1
       EM.stop
-      sleep 7
+    end
+  end
+
+  after :all do
+    EM.run do
+      begin
+      @node.shutdown()
+      EM.stop
+      rescue
+      end
     end
   end
 

@@ -26,12 +26,22 @@ describe VCAP::Services::Neo4j::Node do
 
       @node = Node.new(@opts)
       @resp = @node.provision("free")
-      sleep 8 
 
+      sleep 1
       @bind_resp = @node.bind(@resp['name'],'rw')
-      sleep 5
-
+      
+      sleep 1
       EM.stop
+    end
+  end
+
+  after :all do
+    EM.run do
+      begin
+      @node.shutdown()
+      EM.stop
+      rescue
+      end
     end
   end
 

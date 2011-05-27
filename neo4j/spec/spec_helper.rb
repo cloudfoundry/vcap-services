@@ -129,7 +129,9 @@ def start_server(opts)
   opts = opts.merge({:provisioner => sp})
   sg = VCAP::Services::AsynchronousServiceGateway.new(opts)
   Thin::Server.start(opts[:host], opts[:port], sg)
-  sleep 7
+  sleep 5
+rescue Exception => e
+  $stderr.puts e
 end
 
 
