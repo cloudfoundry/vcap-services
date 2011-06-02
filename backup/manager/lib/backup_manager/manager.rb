@@ -21,6 +21,7 @@ class VCAP::Services::Backup::Manager
     @tasks = [
       VCAP::Services::Backup::Rotator.new(self, options[:rotation])
     ]
+    @enable = options[:enable]
   end
 
   attr_reader :root
@@ -28,6 +29,8 @@ class VCAP::Services::Backup::Manager
 
   def start
     @logger.info("#{self.class}: Starting")
+    if @enable then
+
     if @daemon
       pid = fork
       if pid
@@ -46,6 +49,17 @@ class VCAP::Services::Backup::Manager
       loop {
         sleep @wakeup_interval
         run
+      }
+    end
+
+    else
+      loop {
+        @logger.info("#{self.class}: Daemon is disabled.")
+        if @wakeup_interval < 3600 then
+          sleep 3600
+        else
+          sleep @wakeup_interval
+        end
       }
     end
   end
