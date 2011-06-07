@@ -315,6 +315,7 @@ describe "Mysql server node" do
       res = conn.query("show tables")
       res.num_rows().should == 0
       @node.restore(db["name"], "/tmp/").should == true
+      conn = connect_to_mysql(db)
       res = conn.query("show tables")
       res.num_rows().should == 1
       res.fetch_row[0].should == "test"
