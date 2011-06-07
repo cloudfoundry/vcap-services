@@ -336,11 +336,28 @@ class VCAP::Services::Mysql::Node
     end
   end
 
+  def kill_database_session(database)
+    @logger.info("Kill all sessions connect to db: #{database}")
+    process_list = @connection.list_processes
+    process_list.each do |proc|
+      thread_id, user_, _, db, command, time, _, info = proc
+      if db == database
+        @connection.query("KILL #{thread_id}")
+        @logger.info("Kill session: user:#{user_} db:#{db}")
+      end
+    end
+  end
+
   # restore a given instance using backup file.
   def restore(name, backup_path)
     @logger.debug("Restore db #{name} using backup at #{backup_path}")
     service = ProvisionedService.get(name)
     raise MysqlError.new(MysqlError::MYSQL_CONFIG_NOT_FOUND, name) unless service
+    # mysql can't delete tables that not in dump file.
+    # recreate the database to prevent leave unclean tables after restore.
+    kill_database_session(name)
+    @connection.query("DROP DATABASE #{name}")
+    @connection.query("CREATE DATABASE #{name}")
     host, user, pass, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
     path = File.join(backup_path, "#{name}.sql.gz")
     cmd ="#{@gzip_bin} -dc #{path}|" +
