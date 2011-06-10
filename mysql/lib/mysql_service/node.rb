@@ -3,6 +3,7 @@ require "erb"
 require "fileutils"
 require "logger"
 require "pp"
+require "date"
 
 require "datamapper"
 require "uuidtools"
@@ -156,29 +157,23 @@ class VCAP::Services::Mysql::Node
   end
 
   def kill_long_transaction
-    # FIXME need a better transaction query solution other than parse status text
-    result = @connection.query("SHOW ENGINE INNODB STATUS")
-    innodb_status = nil
-    result.each do |i|
-      innodb_status = i[-1]
-    end
-    lines = innodb_status.split(/\n/).map{|line| line.strip}
-    i = 0
-    while i<= lines.size
-      if lines[i] =~ /---TRANSACTION.*ACTIVE (\d*) sec/ && $1.to_i >= @max_long_tx
-        active_time = $1
-        i += 1
-        # Quit if the line starts with item delimiter ---
-        while (lines[i] =~ /^---/) == nil
-          if lines[i] =~ /MySQL thread id (\d*).* (\w*)$/
-            @connection.query("KILL QUERY #{$1}")
-            @logger.warn("Kill long transaction: user:#{$2} thread: #{$1} active_time:#{active_time}")
-            @long_tx_killed +=1
-          end
-          i +=1
+    result = @connection.query("SELECT NOW()")
+    ts_raw = result.fetch_row[0]
+    server_time =  DateTime.parse(ts_raw).to_time
+    query_str = "SELECT trx_id, trx_state, trx_started, id, user, db, info " +
+                "FROM information_schema.INNODB_TRX t inner join information_schema.PROCESSLIST p " +
+                "ON t.trx_mysql_thread_id = p.ID;"
+    result = @connection.query(query_str)
+    result.each do |trx|
+      trx_id, trx_state, trx_started_raw, id, user, db, info = trx
+      if (trx_state == "RUNNING") and (user != "root")
+        trx_started = DateTime.parse(trx_started_raw).to_time
+        active_time = server_time - trx_started
+        if active_time >= @max_long_tx
+          @connection.query("KILL QUERY #{id}")
+          @logger.warn("Kill long transaction: user:#{user} db:#{db} thread:#{id} info:#{info} active_time:#{active_time}")
+          @long_tx_killed +=1
         end
-      else
-        i += 1
       end
     end
   rescue => e
