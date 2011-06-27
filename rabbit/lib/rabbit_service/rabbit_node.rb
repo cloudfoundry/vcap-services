@@ -37,7 +37,6 @@ class VCAP::Services::Rabbit::Node
   end
 
   def initialize(options)
-    super(options)
     @rabbit_port = options[:rabbit_port] || 5672
     ENV["RABBITMQ_NODE_PORT"] = @rabbit_port.to_s
     @rabbit_ctl = options[:rabbit_ctl]
@@ -49,16 +48,18 @@ class VCAP::Services::Rabbit::Node
     @base_dir = options[:base_dir]
     FileUtils.mkdir_p(@base_dir) if @base_dir
     @options = options
-  end
 
-  def start
-    @logger.info("Starting rabbit node...")
+    # Start RabbitMQ server first.
+    if !start_server
+      puts("Failed to start RabbitMQ server")
+      shutdown
+      exit
+    end
     start_db
-    start_server
+    super(options)
     ProvisionedInstance.all.each do |instance|
       @available_memory -= (instance.memory || @max_memory)
     end
-    true
   end
 
   def shutdown
@@ -284,7 +285,7 @@ class VCAP::Services::Rabbit::Node
       end
       return true
     else
-      @logger.warn("rabbitmqctl error: #{output}")
+      puts("rabbitmqctl error: #{output}")
       raise RabbitError.new(RabbitError::RABBIT_START_SERVER_FAILED)
     end
   end

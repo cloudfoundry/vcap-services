@@ -84,12 +84,7 @@ describe VCAP::Services::Rabbit::Node do
     it "should setup local db with right arguments" do
       @node.start_db.should be
     end
-  end
 
-  describe "Node.start_server" do
-    it "should start rabbit server correctly" do
-      @node.start_server.should be
-    end
   end
 
   describe "Node.rabbitmqctl.vhost" do
@@ -543,7 +538,7 @@ describe VCAP::Services::Rabbit::Node do
         credentials = @node.provision(:free)
         @node.shutdown
         sleep 1
-        @node.start
+        @node = VCAP::Services::Rabbit::Node.new(@options)
         AMQP.start(:host => credentials["host"],
                    :port => credentials["port"],
                    :vhost => credentials["vhost"],

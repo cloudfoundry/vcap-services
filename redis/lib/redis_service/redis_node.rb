@@ -52,8 +52,6 @@ class VCAP::Services::Redis::Node
   end
 
   def initialize(options)
-    super(options)
-
     @base_dir = options[:base_dir]
     FileUtils.mkdir_p(@base_dir)
     @redis_server_path = options[:redis_server_path]
@@ -66,13 +64,10 @@ class VCAP::Services::Redis::Node
     @local_db = options[:local_db]
     @disable_password = "disable-#{UUIDTools::UUID.random_create.to_s}"
     @options = options
-  end
 
-  def start
-    @logger.info("Starting redis node...")
     start_db
+    super(options)
     start_provisioned_instances
-    true
   end
 
   def shutdown

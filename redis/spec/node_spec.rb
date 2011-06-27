@@ -430,7 +430,7 @@ describe VCAP::Services::Redis::Node do
         credentials = @node.provision(:free)
         @node.shutdown
         sleep 1
-        @node.start
+        @node = VCAP::Services::Redis::Node.new(@options)
         sleep 2
         @node.check_password(credentials["port"], credentials["password"]).should == true
         @node.unprovision(credentials["name"])
