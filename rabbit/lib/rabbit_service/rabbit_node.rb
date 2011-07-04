@@ -163,6 +163,26 @@ class VCAP::Services::Rabbit::Node
     {}
   end
 
+  def healthz_details
+    healthz = {}
+    begin
+      list_users
+      healthz[:self] = "ok"
+    rescue => e
+      healthz[:self] = "fail"
+      return healthz
+    end
+    begin
+      ProvisionedInstance.all.each do |instance|
+        healthz[instance.name.to_sym] = get_healthz(instance)
+      end
+    rescue => e
+      @logger.warn("Error get healthz details: #{e}")
+      {"self" => "ok"}
+    end
+    healthz
+  end
+
   # Clean all users permissions
   def disable_instance(service_credentials, binding_credentials_list = [])
     clear_permissions(service_credentials["vhost"], service_credentials["user"])
@@ -464,6 +484,25 @@ class VCAP::Services::Rabbit::Node
     varz[:usage][:exchanges_num] = list_exchanges(instance.vhost).size
     varz[:usage][:bindings_num] = list_bindings(instance.vhost).size
     varz
+  end
+
+  def get_healthz(instance)
+    begin
+      result = "fail"
+      AMQP.start(:host => @local_ip,
+                 :port => @rabbit_port,
+                 :vhost => instance.vhost,
+                 :user => instance.admin_username,
+                 :pass => instance.admin_password) do |conn|
+        if conn.connected?
+          result = "ok"
+        end
+        AMQP.stop {EM.stop}
+      end
+      return result
+    rescue => e
+      return "fail"
+    end
   end
 
   def gen_credentials(instance, user = nil, pass = nil)
