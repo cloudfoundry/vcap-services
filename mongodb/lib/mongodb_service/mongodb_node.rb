@@ -408,11 +408,13 @@ class VCAP::Services::MongoDB::Node
     ProvisionedService.all.each do |provisioned_service|
       overall_stats = mongodb_overall_stats({
         :port      => provisioned_service.port,
+        :name      => provisioned_service.name,
         :admin     => provisioned_service.admin,
         :adminpass => provisioned_service.adminpass
       }) || {}
       db_stats = mongodb_db_stats({
         :port      => provisioned_service.port,
+        :name      => provisioned_service.name,
         :admin     => provisioned_service.admin,
         :adminpass => provisioned_service.adminpass,
         :db        => provisioned_service.db
@@ -541,7 +543,7 @@ class VCAP::Services::MongoDB::Node
         end
         return true
       rescue => e
-        @logger.warn("add user #{options[:username]} failed! #{e}")
+        @logger.warn("Failed add user #{options[:username]}: #{e.message}")
         sleep 1
       end
     end
@@ -573,8 +575,8 @@ class VCAP::Services::MongoDB::Node
     # confirmed it's safe to call it in such way.
     db.command({:serverStatus => 1})
   rescue => e
-    @logger.warn(e)
-    nil
+    @logger.warn("Failed mongodb_overall_stats: #{e.message}, options: #{options}")
+    "Failed mongodb_overall_stats: #{e.message}, options: #{options}"
   end
 
   def mongodb_db_stats(options)
@@ -582,8 +584,8 @@ class VCAP::Services::MongoDB::Node
     auth = db.authenticate(options[:admin], options[:adminpass])
     db.stats()
   rescue => e
-    @logger.warn(e)
-    nil
+    @logger.warn("Failed mongodb_db_stats: #{e.message}, options: #{options}")
+    "Failed mongodb_db_stats: #{e.message}, options: #{options}"
   end
 
   def transition_dir(service_id)
