@@ -429,6 +429,7 @@ class VCAP::Services::Redis::Node
   def check_password(port, password)
     redis = Redis.new({:port => port})
     redis.auth(password)
+    redis.quit
     true
   rescue => e
     if e.message == "ERR invalid password"
@@ -440,21 +441,27 @@ class VCAP::Services::Redis::Node
 
   def get_info(port, password)
     redis = Redis.new({:port => port, :password => password})
-    redis.info
+    info = redis.info
+    redis.quit
+    info
   rescue => e
     raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
   end
 
   def get_config(port, password, key)
     redis = Redis.new({:port => port, :password => password})
-    redis.config(:get, key)[key]
+    result = redis.config(:get, key)[key]
+    redis.quit
+    result
   rescue => e
     raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
   end
 
   def set_config(port, password, key, value)
     redis = Redis.new({:port => port, :password => password})
-    redis.config(:set, key, value)
+    result = redis.config(:set, key, value)
+    redis.quit
+    result
   rescue => e
     raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
   end
@@ -489,6 +496,7 @@ class VCAP::Services::Redis::Node
   def get_healthz(instance)
     redis = Redis.new({:port => instance.port, :password => instance.password})
     redis.echo("")
+    redis.quit
     "ok"
   rescue => e
     "fail"

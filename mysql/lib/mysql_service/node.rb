@@ -511,6 +511,8 @@ class VCAP::Services::Mysql::Node
     rescue => e
       @logger.error("Error get tables of #{instance.name}: #{e}")
       res = "fail"
+    ensure
+      conn.close if conn
     end
     res
   end
