@@ -111,8 +111,17 @@ class VCAP::Services::MongoDB::Node
     ProvisionedService.all.each { |provisioned_service|
       @logger.debug("Try to terminate mongod pid:#{provisioned_service.pid}")
       provisioned_service.kill(:SIGTERM)
+      wait(provisioned_service)
       @logger.debug("mongod pid:#{provisioned_service.pid} terminated")
     }
+  end
+
+  def wait(provisioned_service, interval = 0.2)
+    @logger.debug("wait #{provisioned_service.pid} to terminate")
+    while VCAP.process_running?(provisioned_service.pid) do
+      @logger.info("#{provisioned_service.name} still running, pid: #{provisioned_service.pid}}")
+      sleep interval
+    end
   end
 
   def announcement
