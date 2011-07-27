@@ -5,6 +5,7 @@ require "logger"
 require "pp"
 require "set"
 require "mongo"
+require "timeout"
 
 require "datamapper"
 require "nats/client"
@@ -59,9 +60,22 @@ class VCAP::Services::MongoDB::Node
     end
 
     def kill(sig = :SIGTERM)
-      wait_thread = Process.detach(pid)
+      @wait_thread = Process.detach(pid)
       Process.kill(sig, pid) if running?
-      wait_thread.join if wait_thread
+    end
+
+    def wait_killed(timeout=5, interval=0.2)
+      begin
+        Timeout::timeout(timeout) do
+          @wait_thread.join if @wait_thread
+          while running? do
+            sleep interval
+          end
+        end
+      rescue Timeout::Error
+        return false
+      end
+      true
     end
   end
 
@@ -111,7 +125,9 @@ class VCAP::Services::MongoDB::Node
     ProvisionedService.all.each { |provisioned_service|
       @logger.debug("Try to terminate mongod pid:#{provisioned_service.pid}")
       provisioned_service.kill(:SIGTERM)
-      @logger.debug("mongod pid:#{provisioned_service.pid} terminated")
+      provisioned_service.wait_killed ?
+        @logger.debug("mongod pid:#{provisioned_service.pid} terminated") :
+        @logger.warn("Timeout to terminate mongod pid:#{provisioned_service.pid}")
     }
   end
 
