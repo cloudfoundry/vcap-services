@@ -119,13 +119,9 @@ class VCAP::Services::Neo4j::Node
       @logger.info("Stopping #{service.name} PORT #{service.port} PID #{service.pid}")
       init_script = File.join(@base_dir,service.name,"bin","neo4j")
       @logger.info("Calling #{init_script} stop")
-      
-      fork do
-        handle = IO.popen("#{init_script} stop", { close_fds => 1 })
-        @logger.debug("finished stop #{ handle }")
-      end
-      Process.wait      
-      
+      out = `#{init_script} stop`
+      stopped = $?
+      @logger.debug("finished stop #{ stopped }i:#{out}")
     rescue => e
       @logger.error("Error stopping service #{service.name} PORT #{service.port} PID #{service.pid}: #{e}")
     end
@@ -219,11 +215,9 @@ class VCAP::Services::Neo4j::Node
       "password" => password,
       "name"     => provisioned_service.name,
     }
-    $stderr.puts "bind #{name} #{bind_opts} response #{response}"
     @logger.debug("response: #{response}")
     response
   rescue => e
-    $stderr.puts "bind #{name} #{bind_opts} exception #{e}"
     @logger.warn(e)
     nil
   end
@@ -260,7 +254,6 @@ class VCAP::Services::Neo4j::Node
     `tar -xz --strip-components=1 -f #{@neo4j_path}/neo4j-server.tgz`
     `rm -rf #{dir}/docs #{dir}/examples`
     `cp #{@neo4j_path}/neo4j-hosting-extension.jar #{dir}/system/lib`
-    `cp #{@neo4j_path}/neo4j  #{dir}/bin`
     File.open(File.join(dir, "conf","neo4j.properties"), "a") {|f| f.write("\nenable_remote_shell=false\nenable_online_backup=false\nenable_statistic_collector=false\n")}
   end
 
@@ -286,35 +279,19 @@ class VCAP::Services::Neo4j::Node
     
     init_script=File.join(dir,"bin","neo4j")
     @logger.info("Calling #{init_script} start")
+   
+    out = `#{init_script} start`
+    started = $?
+    @logger.debug("Init finished, started = #{started}: #{out}")
 
-    fork do
-      handle = IO.popen("#{init_script} start", { close_fds => 1 })
-      @logger.debug("Init finished, pid = '#{ handle.pid }' #{ handle }, exit code = #{$? >> 8}")
-    end
-    Process.wait
+    pidfile = File.join(dir,"data","neo4j-service.pid")
 
-    pidfile = File.join(dir,"data","running.pid")
     pid = `[ -f #{pidfile} ] && cat #{pidfile}`
-    if pid
-      @logger.debug("Service #{name} started with pid #{pid}")
-      @available_memory -= memory
-      return pid.to_i if wait_for_server_start(provisioned_service)
-    end
-    nil
-  end
 
-  def wait_for_server_start(provisioned_service, seconds = 5)
-    url = URI.parse("http://#{provisioned_service.username}:#{provisioned_service.password}@#{@local_ip}:#{provisioned_service.port}/admin")
-    while seconds > 0
-      begin
-        r = Net::HTTP.get_response(url)
-        return true if r.code.to_i == 302
-      rescue
-      end
-      seconds -= 1
-      sleep 1
-    end
-    false
+    @logger.debug("Service #{name} running with pid #{pid} #{started}")
+    @available_memory -= memory if started
+
+    return pid.to_i
   end
 
   def memory_for_service(provisioned_service)
@@ -325,37 +302,4 @@ class VCAP::Services::Neo4j::Node
     end
   end
 
-  def close_fds
-    3.upto(get_max_open_fd) do |fd|
-      begin
-        IO.for_fd(fd, "r").close
-      rescue
-      end
-    end
-  end
-
-  def get_max_open_fd
-    max = 0
-
-    dir = nil
-    if File.directory?("/proc/self/fd/") # Linux
-      dir = "/proc/self/fd/"
-    elsif File.directory?("/dev/fd/") # Mac
-      dir = "/dev/fd/"
-    end
-
-    if dir
-      Dir.foreach(dir) do |entry|
-        begin
-          pid = Integer(entry)
-          max = pid if pid > max
-        rescue
-        end
-      end
-    else
-      max = 65535
-    end
-
-    max
-  end
 end
