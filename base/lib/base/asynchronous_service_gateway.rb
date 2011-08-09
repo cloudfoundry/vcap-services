@@ -66,6 +66,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
       'Content-Type'         => 'application/json',
       'X-VCAP-Service-Token' => @token,
     }
+    @proxy_opts = opts[:proxy]
 
     # Setup heartbeats and exit handlers
     EM.add_periodic_timer(@hb_interval) { send_heartbeat }
@@ -331,6 +332,11 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
       :head => @cc_req_hdrs,
       :body => @svc_json,
     }
+    
+    if (@proxy_opts) 
+      add_proxy_opts(req)
+    end
+    
     http = EM::HttpRequest.new(@offering_uri).post(req)
 
     http.callback do
@@ -345,6 +351,13 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
       @logger.error("Failed registering with cloud controller: #{http.error}")
     end
   end
+  
+  def add_proxy_opts(req)
+    req[:proxy] = @proxy_opts
+    # this is a workaround for em-http-requesr 0.3.0 so that header are not lost
+    # more info: https://github.com/igrigorik/em-http-request/issues/130
+    req[:proxy][:head] = req[:head]
+  end
 
   # Lets the cloud controller know that we're going away
   def send_deactivation_notice(stop_event_loop=true)
@@ -354,6 +367,11 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
       :head => @cc_req_hdrs,
       :body => @deact_json,
     }
+    
+    if (@proxy_opts) 
+      add_proxy_opts(req)
+    end
+    
     http = EM::HttpRequest.new(@offering_uri).post(req)
 
     http.callback do
@@ -378,6 +396,11 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     req = {
       :head => @cc_req_hdrs,
     }
+    
+    if (@proxy_opts) 
+      add_proxy_opts(req)
+    end
+    
     http = EM::HttpRequest.new(@handles_uri).get(req)
 
     http.callback do
