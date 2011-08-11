@@ -85,6 +85,7 @@ class VCAP::Services::MongoDB::Node
     FileUtils.mkdir_p(@base_dir)
     @mongod_path = options[:mongod_path]
     @mongorestore_path = options[:mongorestore_path]
+    @mongod_log_dir = options[:mongod_log_dir]
 
     @total_memory = options[:available_memory]
     @available_memory = options[:available_memory]
@@ -221,9 +222,13 @@ class VCAP::Services::MongoDB::Node
 
     provisioned_service.kill(:SIGKILL) if provisioned_service.running?
 
-    dir = File.join(@base_dir, provisioned_service.name)
+    dir = service_dir(provisioned_service.name)
+    log_dir = log_dir(provisioned_service.name)
 
-    EM.defer { FileUtils.rm_rf(dir) }
+    EM.defer do
+      FileUtils.rm_rf(dir)
+      FileUtils.rm_rf(log_dir)
+    end
 
     @available_memory += provisioned_service.memory
     @free_ports << provisioned_service.port
@@ -495,16 +500,18 @@ class VCAP::Services::MongoDB::Node
 
       port = provisioned_service.port
       password = provisioned_service.password
-      dir = service_dir(provisioned_service.name)
+      instance_id = provisioned_service.name
+      dir = service_dir(instance_id)
       data_dir = data_dir(dir)
-      log_file = log_file(dir)
+      log_file = log_file(instance_id)
+      log_dir = log_dir(instance_id)
 
       config = @config_template.result(binding)
       config_path = File.join(dir, "mongodb.conf")
 
       FileUtils.mkdir_p(dir)
       FileUtils.mkdir_p(data_dir)
-      FileUtils.rm_f(log_file)
+      FileUtils.mkdir_p(log_dir)
       FileUtils.rm_f(config_path)
       File.open(config_path, "w") {|f| f.write(config)}
 
@@ -637,8 +644,12 @@ class VCAP::Services::MongoDB::Node
     File.join(to_dir, 'dump_file')
   end
 
-  def log_file(base_dir)
-    File.join(base_dir, 'log')
+  def log_file(instance_id)
+    File.join(log_dir(instance_id), 'log')
+  end
+
+  def log_dir(instance_id)
+    File.join(@mongod_log_dir, instance_id)
   end
 
   def data_dir(base_dir)
@@ -653,8 +664,7 @@ class VCAP::Services::MongoDB::Node
   def record_service_log(service_id)
     @logger.warn(" *** BEGIN mongodb log - instance: #{service_id}")
     @logger.warn("")
-    base_dir = service_dir(service_id)
-    file = File.new(log_file(base_dir), 'r')
+    file = File.new(log_file(instance_id), 'r')
     while (line = file.gets)
       @logger.warn(line.chomp!)
     end
