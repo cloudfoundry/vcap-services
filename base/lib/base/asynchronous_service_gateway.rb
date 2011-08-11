@@ -66,6 +66,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
       'Content-Type'         => 'application/json',
       'X-VCAP-Service-Token' => @token,
     }
+    @proxy_opts = opts[:proxy]
 
     # Setup heartbeats and exit handlers
     EM.add_periodic_timer(@hb_interval) { send_heartbeat }
@@ -316,6 +317,26 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
   end
 
   private
+  
+  def add_proxy_opts(req)
+    req[:proxy] = @proxy_opts
+    # this is a workaround for em-http-requesr 0.3.0 so that headers are not lost
+    # more info: https://github.com/igrigorik/em-http-request/issues/130
+    req[:proxy][:head] = req[:head]
+  end
+  
+  def create_http_request(args)
+    req = {
+      :head => args[:head],
+      :body => args[:body],
+    }
+        
+    if (@proxy_opts) 
+      add_proxy_opts(req)
+    end
+    
+    req
+  end
 
   def make_logger()
     logger = Logger.new(STDOUT)
@@ -326,11 +347,12 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
   # Lets the cloud controller know we're alive and where it can find us
   def send_heartbeat
     @logger.info("Sending info to cloud controller: #{@offering_uri}")
-
-    req = {
+    
+    req = create_http_request(
       :head => @cc_req_hdrs,
       :body => @svc_json,
-    }
+    )
+    
     http = EM::HttpRequest.new(@offering_uri).post(req)
 
     http.callback do
@@ -349,11 +371,12 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
   # Lets the cloud controller know that we're going away
   def send_deactivation_notice(stop_event_loop=true)
     @logger.info("Sending deactivation notice to cloud controller: #{@offering_uri}")
-
-    req = {
-      :head => @cc_req_hdrs,
-      :body => @deact_json,
-    }
+    
+    req = create_http_request(
+      :head => @cc_req_hdrs, 
+      :body => @deact_json
+    )
+        
     http = EM::HttpRequest.new(@offering_uri).post(req)
 
     http.callback do
@@ -375,9 +398,8 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
   def fetch_handles(&cb)
     @logger.info("Fetching handles from cloud controller @ #{@handles_uri}")
 
-    req = {
-      :head => @cc_req_hdrs,
-    }
+    req = create_http_request :head => @cc_req_hdrs
+    
     http = EM::HttpRequest.new(@handles_uri).get(req)
 
     http.callback do
