@@ -1,0 +1,106 @@
+#!/usr/bin/env ruby
+# Copyright (c) 2009-2011 VMware, Inc.
+
+ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
+
+require "rubygems"
+require "bundler/setup"
+
+$LOAD_PATH.unshift(File.expand_path("../../lib", __FILE__))
+
+require "blob_service/blob_node"
+
+blob_conf_template = File.expand_path("../../resources/blob.conf.erb", __FILE__)
+meta_conf_template = File.expand_path("../../resources/meta.conf.erb", __FILE__)
+config_file = File.expand_path("../../config/blob_node.yml", __FILE__)
+
+OptionParser.new do |opts|
+  opts.banner = "Usage: blob_node [options]"
+  opts.on("-c", "--config [ARG]", "Configuration File") do |opt|
+    config_file = opt
+  end
+  opts.on("-h", "--help", "Help") do
+    puts opts
+    exit
+  end
+end.parse!
+
+def parse_property(hash, key, type, options = {})
+  obj = hash[key]
+  if obj.nil?
+    raise "Missing required option: #{key}" unless options[:optional]
+    nil
+  elsif type == Range
+    raise "Invalid Range object: #{obj}" unless obj.kind_of?(Hash)
+    first, last = obj["first"], obj["last"]
+    raise "Invalid Range object: #{obj}" unless first.kind_of?(Integer) and last.kind_of?(Integer)
+    Range.new(first, last)
+  else
+    raise "Invalid #{type} object: #{obj}" unless obj.kind_of?(type)
+    obj
+  end
+end
+
+begin
+  config = YAML.load_file(config_file)
+rescue => e
+  puts "Could not read configuration file:  #{e}"
+  exit
+end
+
+logger = Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily")
+logger.level = case (parse_property(config, "log_level", String, :optional => true) || "INFO")
+  when "DEBUG" then Logger::DEBUG
+  when "INFO" then Logger::INFO
+  when "WARN" then Logger::WARN
+  when "ERROR" then Logger::ERROR
+  when "FATAL" then Logger::FATAL
+  else Logger::UNKNOWN
+end
+
+options = {
+  :logger => logger,
+  :index => parse_property(config, "index", Integer, :optional => true),
+  :base_dir => parse_property(config, "base_dir", String),
+  :nodejs_path => parse_property(config, "nodejs_path", String),
+  :blobd_path => parse_property(config, "blobd_path", String),
+  :blobrestore_path => parse_property(config, "blobrestore_path", String),
+  :metad_path => parse_property(config, "metad_path", String),
+  :metarestore_path => parse_property(config, "metarestore_path", String),
+  :ip_route => parse_property(config, "ip_route", String, :optional => true),
+  :available_memory => parse_property(config, "available_memory", Integer),
+  :node_id => parse_property(config, "node_id", String),
+  :mbus => parse_property(config, "mbus", String),
+  :config_template => blob_conf_template,
+  :meta_config_template => meta_conf_template,
+  :local_db => parse_property(config, "local_db", String),
+  :port_range => parse_property(config, "port_range", Range),
+  :migration_nfs => parse_property(config, "migration_nfs", String, :optional => true),
+  :max_memory => parse_property(config, "max_memory", Integer),
+  :meta_max_memory => parse_property(config,"meta_max_memory", Integer)
+}
+
+def shutdown(blob_node)
+  blob_node.shutdown
+  EM.stop
+end
+
+EM.error_handler do |e|
+  logger.fatal("#{e}\n#{e.backtrace.join("\n")}")
+  exit
+end
+
+pid_file = parse_property(config, "pid", String)
+begin
+  FileUtils.mkdir_p(File.dirname(pid_file))
+rescue => e
+  logger.fatal "Can't create pid directory, exiting: #{e}"
+end
+File.open(pid_file, 'w') { |f| f.puts "#{Process.pid}" }
+
+EM.run do
+  blob_node = VCAP::Services::Blob::Node.new(options)
+  trap("INT") {shutdown(blob_node)}
+  trap("TERM") {shutdown(blob_node)}
+end
+
