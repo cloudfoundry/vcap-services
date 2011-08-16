@@ -1,0 +1,13 @@
+require 'rake'
+require 'rspec/core/rake_task'
+require 'rcov/rcovtask'
+RSpec::Core::RakeTask.new(:spec)
+
+task :test => :spec
+task :default => :spec
+
+RSpec::Core::RakeTask.new(:rcov) do |spec|
+  spec.rcov = true
+  spec.rcov_opts =  %q[--exclude "spec"]
+end
+
