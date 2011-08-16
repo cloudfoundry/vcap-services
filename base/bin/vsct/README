@@ -1,0 +1,16 @@
+Summary
+-------
+VSCT is short for vcap-service certification tool. It integrates to original vmc tool, meaning that it has full functionalities of vmc. And meanwhile, it provides extra feature for certification.
+
+Usage
+-------
+The execution script is under bin directory. And it's basically same as vmc tool. You can even replace the original vmc by export PATH
+    cd vsct
+    export PATH=$PWD/bin:$PATH
+After that, you can check "vmc help" to find out the new commands
+
+create-test <appname>
+will push a canonical application to current vmc target and create a set of services(currently, it includes mysql,mongodb,redis and rabbitmq.) and bind those services to the application. Then start the application.
+
+verify-test <appname>
+will try to access those services via the canonical application.
