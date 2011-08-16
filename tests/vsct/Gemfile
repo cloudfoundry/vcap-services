@@ -1,0 +1,11 @@
+source "http://rubygems.org"
+
+gem "vmc"
+gem "curb"
+
+group :development, :test do
+  gem "rspec"
+  gem "rake"
+  gem "rcov"
+  gem "watchr"
+end
