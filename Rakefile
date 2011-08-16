@@ -1,4 +1,4 @@
 desc "Run integration tests."
 task "tests" do |t|
-  system "cd tests; bundle exec rake tests"
+  system "cd tests/backup_test/; bundle exec rake tests"
 end

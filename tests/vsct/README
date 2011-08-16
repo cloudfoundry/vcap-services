@@ -1,0 +1,23 @@
+Summary
+-------
+VSCT is short for vcap-service certification tool. It integrates to original vmc tool, meaning that it has full functionalities of vmc. And meanwhile, it provides extra feature for certification.
+
+Installation
+-------
+First, check out the code. Then make a symbol link of <VSCT_HOME>/app to a canonical application.
+    ln -sf <PATH_TO_CANONICAL_APP> <VSCT_HOME>/app
+
+Now, you are good to go. The startup script is under <VSCT_HOME>/bin. As it is a extended version of vmc, it can be a replacement for original vmc tool. To do so, just insert <VSCT_HOME>/bin into PATH
+    export PATH=<VSCT_HOME>/bin:$PATH
+
+Usage
+-------
+Check "vmc help", you will find all original vmc commands and two more commands for certification.
+
+create-test <appname>
+will push a canonical application to current vmc target and create a set of services(currently, it includes mysql,mongodb,redis and rabbitmq.) and bind those services to the application. Then start the application.
+
+verify-test <appname>
+will try to access those services via the canonical application.
+
+Note: These commands depend on vmc target & login. So the target should be set before these commands. And the logined user should be authorized to access rabbitmq service
