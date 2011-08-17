@@ -183,7 +183,7 @@ class Runner
         raise "Failed to enable instance." if response == 'null'
         prov_cred, binding_creds = Yajl::Parser.parse(response)
         # update all handles
-        binding_creds[instance] = {'credentials' => prov_cred}
+        binding_creds[instance] = prov_cred
         binding_creds.each do |k,v|
           h = @handles[k]
           if not h
@@ -191,7 +191,7 @@ class Runner
             next
           end
           handle = h.dup
-          handle['credentials'] = v['credentials']
+          handle['credentials'] = v
           handle_msg = Yajl::Encoder.encode(handle)
           nat_request(@channel[:update_handle], instance, data = handle_msg) do |res|
             puts "Update handle #{handle} result #{res}" if @verbose
