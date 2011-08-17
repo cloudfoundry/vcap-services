@@ -1,0 +1,8 @@
+Code-Review+2: Figo Feng <ffeng@vmware.com>
+Code-Review+1: Felix Hu <hhu@vmware.com>
+Verified+1: Felix Hu <hhu@vmware.com>
+Submitted-by: Anfernee Gui <agui@vmware.com>
+Submitted-at: Wed, 17 Aug 2011 07:01:11 +0000
+Reviewed-on: http://cloudfoundry-codereview.qa.mozycloud.com/gerrit/892
+Project: vcap-services
+Branch: refs/heads/services-r5
