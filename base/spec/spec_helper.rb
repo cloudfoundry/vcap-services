@@ -20,11 +20,14 @@ class BaseTests
 
     IP_ROUTE = "127.0.0.1"
 
+    NODE_TIMEOUT = 5
+
     def self.default(more=nil)
       options = {
         :logger => LOGGER,
         :ip_route => IP_ROUTE,
         :mbus => NATS_URI,
+        :node_timeout => NODE_TIMEOUT
       }
       more.each { |k,v| options[k] = v } if more
       options
@@ -643,6 +646,7 @@ require 'base/asynchronous_service_gateway'
 class AsyncGatewayTests
   CC_PORT = 34512
   GW_PORT = 34513
+  NODE_TIMEOUT = 5
 
   def self.create_nice_gateway
     MockGateway.new(true)
@@ -683,6 +687,7 @@ class AsyncGatewayTests
                     },
         :token   => @token,
         :provisioner => sp,
+        :node_timeout => NODE_TIMEOUT,
         :cloud_controller_uri => "http://localhost:#{CC_PORT}"
       )
       @server = Thin::Server.new('localhost', GW_PORT, sg)
