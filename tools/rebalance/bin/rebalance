@@ -95,6 +95,11 @@ class Runner
         binding_creds << v['credentials'] if v['credentials']['name'] == instance
       end
     end
+    unless prov_cred
+      puts "Can't find instance #{instance}."
+      @control.call
+      return
+    end
     if @options[:check] && prov_cred["node_id"] != @options[:source]
       puts "ERROR: Instance #{instance} not belongs to source node #{@options[:source]}"
       return @control.call()
