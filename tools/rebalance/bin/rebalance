@@ -1,5 +1,9 @@
 #!/usr/bin/env ruby
+# Copyright (c) 2009-2011 VMware, Inc.
+
+ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
 require "rubygems"
+require "bundler/setup"
 require "nats/client"
 require "yajl"
 require "logger"
@@ -60,7 +64,7 @@ class Runner
       @control = control(@instances.dup) do
         puts "Migration complete."
         # In case NATS stop before message send out.
-        EM.add_timer(2) {NATS.stop}
+        EM.add_timer(2) {EM.stop}
       end
       puts "\nMigration begin."
       @control.call()
@@ -269,7 +273,7 @@ class Runner
   end
 end
 
-NATS.start do
+EM.run do
   runner = Runner.new(ARGV.dup)
   runner.run
 end
