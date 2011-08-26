@@ -1,0 +1,55 @@
+#!/usr/bin/env ruby
+# -*- mode: ruby -*-
+# Copyright (c) 2009-2011 VMware, Inc.
+require "mongo"
+require File.dirname(__FILE__) + '/../lib/tools_test'
+
+class MongodbRecover < ToolsTest
+
+  def initialize
+    super
+    @gateway = @config["mongodb_gateway"]
+    @app_name = "recover"
+  end
+
+  def prepare
+    super
+    @instance_alias = %x[vmc create-service mongodb].split(/[\[\]]/)[1]
+    update_credentials
+    add_app(@app_name)
+    %x[vmc bind-service #{@instance_alias} #{@app_name}]
+    add_mongodb_data(@credentials, "a", 1)
+    backup_mongodb_node(@credentials)
+    add_mongodb_data(@credentials, "b", 2)
+  end
+
+  def work
+    super
+    Net::SSH.start(@credentials["hostname"], "root", :password => "ca\$hc0w") do |ssh|
+      ssh.exec!("/var/vcap/bosh/bin/monit stop mongodb_node && rm -f /var/vcap/store/mongodb_node.db")
+      #ssh.exec!("rm -rf /var/vcap/store/mongodb")
+      sleep 1
+      ssh.exec!("/var/vcap/bosh/bin/monit start mongodb_node")
+    end
+    sleep 3
+    recover
+  end
+
+  def verify
+    super
+    update_credentials
+    if !verify_mongodb_credentials(@credentials, "a", 1) || verify_mongodb_credentials(@credentials, "b", 2)
+      puts "Mongodb recover is failed in service credentials verify"
+    end
+    %x[vmc restart #{@app_name}]
+    credentials = get_app_credentials(@config["target"].gsub(/api/, @app_name))
+    if !verify_mongodb_credentials(credentials, "a", 1) || verify_mongodb_credentials(credentials, "b", 2)
+      puts "Mongodb recover is failed in binding credentials verify"
+      return
+    end
+    puts "Mongodb recover is successful"
+  end
+
+end
+
+MongodbRecover.new.start

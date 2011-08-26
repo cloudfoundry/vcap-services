@@ -1,0 +1,8 @@
+source "http://rubygems.org"
+
+gem "net-ssh"
+gem "pg"
+gem "redis"
+gem "mysql"
+gem "mongo"
+gem "yajl-ruby"

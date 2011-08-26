@@ -1,0 +1,40 @@
+#!/usr/bin/env ruby
+# -*- mode: ruby -*-
+# Copyright (c) 2009-2011 VMware, Inc.
+require "mongo"
+require File.dirname(__FILE__) + '/../lib/tools_test'
+
+class MongodbRestore < ToolsTest
+
+  def initialize
+    super
+    @gateway = @config["mongodb_gateway"]
+  end
+
+  def prepare
+    super
+    @instance_alias = %x[vmc create-service mongodb].split(/[\[\]]/)[1]
+    update_credentials
+    add_mongodb_data(@credentials, "a", 1)
+    backup_mongodb_node(@credentials)
+    add_mongodb_data(@credentials, "b", 2)
+  end
+
+  def work
+    super
+    restore
+  end
+
+  def verify
+    super
+    update_credentials
+    if verify_mongodb_credentials(@credentials, "a", 1) and !verify_mongodb_credentials(@credentials, "b", 2)
+      puts "Mongodb restore is successful"
+    else
+      puts "Mongodb restore is failed"
+    end
+  end
+
+end
+
+MongodbRestore.new.start

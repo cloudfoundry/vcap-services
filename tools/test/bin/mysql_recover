@@ -1,0 +1,55 @@
+#!/usr/bin/env ruby
+# -*- mode: ruby -*-
+# Copyright (c) 2009-2011 VMware, Inc.
+require "mysql"
+require File.dirname(__FILE__) + '/../lib/tools_test'
+
+class MysqlRecover < ToolsTest
+
+  def initialize
+    super
+    @gateway = @config["mysql_gateway"]
+    @app_name = "recover"
+  end
+
+  def prepare
+    super
+    @instance_alias = %x[vmc create-service mysql].split(/[\[\]]/)[1]
+    update_credentials
+    add_app(@app_name)
+    %x[vmc bind-service #{@instance_alias} #{@app_name}]
+    add_mysql_data(@credentials, 10)
+    backup_mysql_node(@credentials)
+    sleep 2
+    add_mysql_data(@credentials, 20, false)
+  end
+
+  def work
+    super
+    Net::SSH.start(@credentials["hostname"], "root", :password => "ca\$hc0w") do |ssh|
+      ssh.exec!("/var/vcap/bosh/bin/monit stop mysql_node && rm -f /var/vcap/store/mysql_node.db")
+      sleep 1
+      ssh.exec!("/var/vcap/bosh/bin/monit start mysql_node")
+    end
+    sleep 3
+    recover
+  end
+
+  def verify
+    super
+    update_credentials
+    if !verify_mysql_credentials(@credentials, 10) || verify_mysql_credentials(@credentials, 20)
+      puts "Mysql restore is failed in service credentials verify"
+    end
+    %x[vmc restart #{@app_name}]
+    credentials = get_app_credentials(@config["target"].gsub(/api/, @app_name))
+    if !verify_mysql_credentials(credentials, 10) || verify_mysql_credentials(credentials, 20)
+      puts "Mysql recover is failed in binding credentials verify"
+      return
+    end
+    puts "Mysql recover is successful"
+  end
+
+end
+
+MysqlRecover.new.start

@@ -1,0 +1,41 @@
+#!/usr/bin/env ruby
+# -*- mode: ruby -*-
+# Copyright (c) 2009-2011 VMware, Inc.
+require "mysql"
+require File.dirname(__FILE__) + '/../lib/tools_test'
+
+class MysqlRestore < ToolsTest
+
+  def initialize
+    super
+    @gateway = @config["mysql_gateway"]
+  end
+
+  def prepare
+    super
+    @instance_alias = %x[vmc create-service mysql].split(/[\[\]]/)[1]
+    update_credentials
+    add_mysql_data(@credentials, 10)
+    backup_mysql_node(@credentials)
+    sleep 2
+    add_mysql_data(@credentials, 20, false)
+  end
+
+  def work
+    super
+    restore
+  end
+
+  def verify
+    super
+    update_credentials
+    if verify_mysql_credentials(@credentials, 10) and !verify_mysql_credentials(@credentials, 20)
+      puts "Mysql restore is successful"
+    else
+      puts "Mysql restore is failed"
+    end
+  end
+
+end
+
+MysqlRestore.new.start

@@ -1,0 +1,60 @@
+#!/usr/bin/env ruby
+# -*- mode: ruby -*-
+# Copyright (c) 2009-2011 VMware, Inc.
+require "mysql"
+require File.dirname(__FILE__) + '/../lib/tools_test'
+
+class MysqlRebalance < ToolsTest
+
+  def initialize
+    super
+    @gateway = @config["mysql_gateway"]
+    @app1_name = "rebalance1"
+    @app2_name = "rebalance2"
+  end
+
+  def prepare
+    super
+    @instance_alias_array.push(%x[vmc create-service mysql].split(/[\[\]]/)[1])
+    @instance_alias_array.push(%x[vmc create-service mysql].split(/[\[\]]/)[1])
+    @instance_alias_array.push(%x[vmc create-service mysql].split(/[\[\]]/)[1])
+    @instance_alias_array.push(%x[vmc create-service mysql].split(/[\[\]]/)[1])
+    @instance_alias_array.push(%x[vmc create-service mysql].split(/[\[\]]/)[1])
+    @instance_alias_array.push(%x[vmc create-service mysql].split(/[\[\]]/)[1])
+    update_credentials
+    add_app(@app1_name)
+    %x[vmc bind-service #{@instance_alias} #{@app1_name}]
+    add_app(@app2_name)
+    %x[vmc bind-service #{@instance_alias} #{@app2_name}]
+    add_mysql_data(@credentials, 10)
+  end
+
+  def work
+    super
+    rebalance("MyaaS")
+  end
+
+  def verify
+    super
+    update_credentials
+    if !verify_mysql_credentials(@credentials, 10)
+      puts "Mysql rebalance is failed in data restore"
+    end
+    %x[vmc restart #{@app1_name}]
+    credentials = get_app_credentials(@config["target"].gsub(/api/, @app1_name))
+    if !verify_mysql_credentials(credentials, 10)
+      puts "Mysql rebalance is failed in credentials verify"
+      return
+    end
+    %x[vmc restart #{@app2_name}]
+    credentials = get_app_credentials(@config["target"].gsub(/api/, @app2_name))
+    if !verify_mysql_credentials(credentials, 10)
+      puts "Mysql rebalance is failed in credentials verify"
+      return
+    end
+    puts "Mysql rebalance is successful"
+  end
+
+end
+
+MysqlRebalance.new.start
