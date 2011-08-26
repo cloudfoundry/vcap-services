@@ -1,0 +1,8 @@
+Code-Review+2: Andrew Liu <aliu@vmware.com>
+Verified+1: Tang Rui <rtang@vmware.com>
+Verified+1: cftestbuild <cftestbuild@gmail.com>
+Submitted-by: Tang Rui <rtang@vmware.com>
+Submitted-at: Fri, 26 Aug 2011 03:15:45 +0000
+Reviewed-on: http://cloudfoundry-codereview.qa.mozycloud.com/gerrit/1142
+Project: vcap-services
+Branch: refs/heads/services-r5
