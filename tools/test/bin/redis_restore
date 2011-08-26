@@ -1,0 +1,42 @@
+#!/usr/bin/env ruby
+# -*- mode: ruby -*-
+# Copyright (c) 2009-2011 VMware, Inc.
+require "redis"
+require File.dirname(__FILE__) + '/../lib/tools_test'
+
+class RedisRestore < ToolsTest
+
+  def initialize
+    super
+    @gateway = @config["redis_gateway"]
+  end
+
+  def prepare
+    super
+    @instance_alias = %x[vmc create-service redis].split(/[\[\]]/)[1]
+    update_credentials
+    add_redis_data(@credentials, "foo1", "bar1")
+    %x[redis-cli -h #{@credentials["hostname"]} -p #{@credentials["port"]} -a #{@credentials["password"]} config set save "1 0"]
+    sleep 1
+    backup_redis_node(@credentials)
+    add_redis_data(@credentials, "foo2", "bar2")
+  end
+
+  def work
+    super
+    restore
+  end
+
+  def verify
+    super
+    update_credentials
+    if verify_redis_credentials(@credentials, "foo1", "bar1") and !verify_redis_credentials(@credentials, "foo2", "bar2")
+      puts "Redis restore is successful"
+    else
+      puts "Redis restore is failed"
+    end
+  end
+
+end
+
+RedisRestore.new.start

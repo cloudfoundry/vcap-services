@@ -1,0 +1,54 @@
+#!/usr/bin/env ruby
+# -*- mode: ruby -*-
+# Copyright (c) 2009-2011 VMware, Inc.
+require "redis"
+require File.dirname(__FILE__) + '/../lib/tools_test'
+
+class RedisRecover < ToolsTest
+
+  def initialize
+    super
+    @gateway = @config["redis_gateway"]
+    @app_name = "recover"
+  end
+
+  def prepare
+    super
+    @instance_alias = %x[vmc create-service redis].split(/[\[\]]/)[1]
+    update_credentials
+    add_app(@app_name)
+    %x[vmc bind-service #{@instance_alias} #{@app_name}]
+    add_redis_data(@credentials, "foo", "bar")
+    backup_redis_node(@credentials)
+  end
+
+  def work
+    super
+    Net::SSH.start(@credentials["hostname"], "root", :password => "ca\$hc0w") do |ssh|
+      ssh.exec!("/var/vcap/bosh/bin/monit stop redis_node && rm -f /var/vcap/store/redis/redis_node.db")
+      sleep 1
+      ssh.exec!("/var/vcap/bosh/bin/monit start redis_node")
+    end
+    sleep 3
+    recover
+  end
+
+  def verify
+    super
+    update_credentials
+    if !verify_redis_credentials(@credentials, "foo", nil)
+      puts "Redis recover is failed in data restore"
+      return
+    end
+    %x[vmc restart #{@app_name}]
+    credentials = get_app_credentials(@config["target"].gsub(/api/, @app_name))
+    if credentials["hostname"] != @credentials["hostname"] || credentials["port"] != @credentials["port"] || credentials["password"] != @credentials["password"]
+      puts "Redis recover is failed in credentials verify"
+      return
+    end
+    puts "Redis recover is successful"
+  end
+
+end
+
+RedisRecover.new.start

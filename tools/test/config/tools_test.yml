@@ -1,0 +1,13 @@
+---
+target: http://api.appcloud13.dev.mozycloud.com
+ccdb:
+  database: appcloud
+  host: 172.31.216.12
+  port: 2544
+  username: root
+  password: a7a33139c8e3f34bc201351b
+backup_manager: 172.31.216.149
+redis_gateway: 172.31.216.143
+mongodb_gateway: 172.31.216.144
+mysql_gateway: 172.31.216.142
+mbus: nats://nats:0b450ada9f830085e2cdeff6@172.31.216.11:4222
