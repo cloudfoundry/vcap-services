@@ -311,8 +311,14 @@ class VCAP::Services::Mysql::Node
 
   def delete_database_user(user)
     @logger.info("Delete user #{user}")
-    @connection.query("DROP USER #{user}")
-    @connection.query("DROP USER #{user}@'localhost'")
+    ["%", "localhost"].each do |host|
+      res = @connection.query("SELECT user from mysql.user where user='#{user}' and host='#{host}'")
+      if res.num_rows == 1
+        @connection.query("DROP USER #{user}@'#{host}'")
+      else
+        @logger.warn("Fail to delete user #{user} which is not exists.")
+      end
+    end
     kill_user_session(user)
   rescue Mysql::Error => e
     @logger.error("Could not delete user '#{user}': [#{e.errno}] #{e.error}")
