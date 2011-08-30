@@ -303,7 +303,7 @@ class VCAP::Services::Mysql::Node
     begin
       delete_database_user(user)
       @logger.info("Deleting database: #{name}")
-      @connection.query("DROP DATABASE #{name}")
+      @connection.query("DROP DATABASE if exists #{name}")
     rescue Mysql::Error => e
       @logger.error("Could not delete database: [#{e.errno}] #{e.error}")
     end
@@ -311,8 +311,10 @@ class VCAP::Services::Mysql::Node
 
   def delete_database_user(user)
     @logger.info("Delete user #{user}")
-    @connection.query("DROP USER #{user}")
-    @connection.query("DROP USER #{user}@'localhost'")
+    ["%", "localhost"].each do |host|
+      res = @connection.query("SELECT user from mysql.user where user='#{user}' and host='#{host}'")
+      @connection.query("DROP USER #{user}@'#{host}'") if res.num_rows == 1
+    end
     kill_user_session(user)
   rescue Mysql::Error => e
     @logger.error("Could not delete user '#{user}': [#{e.errno}] #{e.error}")
