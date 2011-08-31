@@ -13,6 +13,7 @@ $:.unshift(File.expand_path("../../../../../lib", __FILE__))
 require 'json_message'
 require 'services/api'
 
+$:.unshift(File.expand_path("..", __FILE__))
 require 'service_error'
 
 module VCAP
@@ -36,6 +37,11 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
 
   def initialize(opts)
     super
+    setup(opts)
+  end
+
+  # setup the environment
+  def setup(opts)
     missing_opts = REQ_OPTS.select {|o| !opts.has_key? o}
     raise ArgumentError, "Missing options: #{missing_opts.join(', ')}" unless missing_opts.empty?
     @service      = opts[:service]
@@ -329,7 +335,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
 
     def async_mode(timeout=@node_timeout)
       request.env['__async_timer'] = EM.add_timer(timeout) do
-        @logger.warn("Service Unavailable")
+        @logger.warn("Request timeout in #{timeout} seconds.")
         error_msg = ServiceError.new(ServiceError::SERVICE_UNAVAILABLE).to_hash
         err_body = error_msg['msg'].to_json()
         request.env['async.callback'].call(

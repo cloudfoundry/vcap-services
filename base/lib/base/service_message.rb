@@ -2,6 +2,9 @@
 #
 require 'api/message'
 
+$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', '..', '..', 'lib')
+require 'services/api/const'
+
 module VCAP::Services::Internal
 
   # Provisioner --> Node
