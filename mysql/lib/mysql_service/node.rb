@@ -93,6 +93,20 @@ class VCAP::Services::Mysql::Node
     @binding_served=0
   end
 
+  def all_instances_list
+    ProvisionedService.all.map{|s| s.name}
+  end
+
+  def all_bindings_list
+    res=[]
+    all_ins_users = ProvisionedService.all.map{|s| s.user}
+    @connection.query('select DISTINCT user.user,db,password from user, db where user.user = db.user').each do |user,name,password|
+      # Filter out the instances handles
+      res << gen_credential(name,user,password) unless all_ins_users.include?(user)
+    end
+    res
+  end
+
   def announcement
     a = {
       :available_storage => @available_storage
@@ -267,10 +281,8 @@ class VCAP::Services::Mysql::Node
     return if credential.nil?
     @logger.debug("Unbind service: #{credential.inspect}")
     name, user, bind_opts,passwd = %w(name user bind_opts password).map{|k| credential[k]}
-    service = ProvisionedService.get(name)
-    raise MysqlError.new(MysqlError::MYSQL_CONFIG_NOT_FOUND, name) unless service
     # validate the existence of credential, in case we delete a normal account because of a malformed credential
-    res = @connection.query("SELECT * from mysql.user WHERE user='#{user}' AND password=PASSWORD('#{passwd}')")
+    res = @connection.query("SELECT * from mysql.user WHERE user='#{user}'")
     raise MysqlError.new(MysqlError::MYSQL_CRED_NOT_FOUND, credential.inspect) if res.num_rows()<=0
     delete_database_user(user)
     true
