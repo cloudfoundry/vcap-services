@@ -88,7 +88,8 @@ class VCAP::Services::Base::Gateway
              :token   => config[:token],
              :logger  => logger,
              :provisioner => sp,
-             :cloud_controller_uri => cloud_controller_uri
+             :cloud_controller_uri => cloud_controller_uri,
+             :check_orphan_interval => config[:check_orphan_interval] || -1
            )
       Thin::Server.start(config[:host], config[:port], sg)
     end

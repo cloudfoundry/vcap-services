@@ -141,6 +141,10 @@ class VCAP::Services::MongoDB::Node
     a
   end
 
+  def all_instances_list
+    ProvisionedService.all.map{|ps| ps["name"]}
+  end
+
 
   def provision(plan, credential = nil)
     @logger.info("Provision request: plan=#{plan}")
