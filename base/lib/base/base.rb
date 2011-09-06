@@ -27,11 +27,15 @@ class VCAP::Services::Base::Base
 
   include VCAP::Services::Base::Error
 
+  attr_reader :orphan_ins_hash
+  attr_reader :orphan_binding_hash
   def initialize(options)
     @logger = options[:logger]
     @options = options
     @local_ip = VCAP.local_ip(options[:ip_route])
     @logger.info("#{service_description}: Initializing")
+    @orphan_ins_hash = {}
+    @orphan_binding_hash = {}
     @node_nats = NATS.connect(:uri => options[:mbus]) {
       on_connect_node
     }
@@ -54,13 +58,19 @@ class VCAP::Services::Base::Base
   end
 
   def update_varz()
-    varz_details.each { |k,v|
+    vz=varz_details
+    vz[:orphan_ins_hash]=@orphan_ins_hash
+    vz[:orphan_binding_hash]=@orphan_binding_hash
+    vz.each { |k,v|
       VCAP::Component.varz[k] = v
     }
   end
 
   def update_healthz()
-    VCAP::Component.healthz = Yajl::Encoder.encode(healthz_details, :pretty => true, :terminator => "\n")
+    hz=healthz_details
+    hz[:orphan_ins_hash]=@orphan_ins_hash
+    hz[:orphan_binding_hash]=@orphan_binding_hash
+    VCAP::Component.healthz = Yajl::Encoder.encode(hz, :pretty => true, :terminator => "\n")
   end
 
   def shutdown()
