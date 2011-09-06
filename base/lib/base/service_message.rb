@@ -47,4 +47,20 @@ module VCAP::Services::Internal
     required :instance_id
     required :backup_path
   end
+
+  class CheckOrphanRequest < ServiceMessage
+    required :handles
+  end
+
+  class CheckOrphanResponse < ServiceMessage
+    required :success
+    optional :error
+    optional :orphan_ins_hash
+    optional :orphan_binding_hash
+  end
+
+  class PurgeOrphanRequest < ServiceMessage
+    required :orphan_ins_list
+    required :orphan_binding_list
+  end
 end
