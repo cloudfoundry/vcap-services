@@ -17,6 +17,7 @@ require "mongodb_service/common"
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
 require 'base/node'
+require "base/do_sqlite3_r"
 
 module VCAP
   module Services
