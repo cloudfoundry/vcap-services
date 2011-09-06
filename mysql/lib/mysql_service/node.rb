@@ -12,6 +12,7 @@ require "open3"
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
 require 'base/node'
 require 'base/service_error'
+require "base/do_sqlite3_r"
 
 module VCAP
   module Services
