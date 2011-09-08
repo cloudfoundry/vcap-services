@@ -80,8 +80,14 @@ class VCAP::Services::MongoDB::Node
     @total_space = options[:available_space]
     @available_space = options[:available_space]
     @max_space  = options[:max_space]
+    @quota_enforce = options[:quota_enforce]
 
     @config_template = ERB.new(File.read(options[:config_template]))
+
+    if @quota_enforce and !is_root?
+      @logger.fatal("Node must run by root if quota_enforce is enabled!")
+      exit 1
+    end
 
     FileUtils.mkdir_p(@image_dir)
 
@@ -211,12 +217,7 @@ class VCAP::Services::MongoDB::Node
 
     provisioned_service.kill if provisioned_service.running?
 
-    if is_root?
-      deallocate_space(provisioned_service)
-    else
-      @logger.warn("Node runned by non-root!")
-      @logger.warn("#{provisioned_service.name}'s loopback device is not cleaned up!")
-    end
+    deallocate_space(provisioned_service) if @quota_enforce
 
     dir = service_dir(provisioned_service.name)
     EM.defer { FileUtils.rm_rf(dir) }
@@ -476,7 +477,7 @@ class VCAP::Services::MongoDB::Node
     # either it's already mounted, or it's deployed before quota is enabled.
     # In both cases, no need to allocate space. Always try to allocate space
     # in empty directory.
-    if is_root? && empty_dir?(dir)
+    if @quota_enforce and empty_dir?(dir)
       allocate_space(provisioned_service, space, cleanup_space)
     end
 

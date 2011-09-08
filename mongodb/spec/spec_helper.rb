@@ -108,6 +108,7 @@ def get_node_config()
     :migration_nfs => parse_property(config, "migration_nfs", String, :optional => true),
     :max_space => parse_property(config, "max_space", Integer),
     :max_memory => parse_property(config, "max_memory", Integer),
+    :quota_enforce => Process.uid == 0,
     :image_dir => '/tmp/mongo/images',
     :base_dir => '/tmp/mongo/instances',
     :local_db => 'sqlite3:/tmp/mongo/mongodb_node.db'
