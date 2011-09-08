@@ -24,6 +24,9 @@ OptionParser.new do |opts|
   end
 end.parse!
 
+class Boolean
+end
+
 def parse_property(hash, key, type, options = {})
   obj = hash[key]
   if obj.nil?
@@ -34,6 +37,9 @@ def parse_property(hash, key, type, options = {})
     first, last = obj["first"], obj["last"]
     raise "Invalid Range object: #{obj}" unless first.kind_of?(Integer) and last.kind_of?(Integer)
     Range.new(first, last)
+  elsif type == Boolean
+    raise "Invalid #{type} object: #{obj}" unless obj.kind_of?(TrueClass) or obj.kind_of?(FalseClass)
+    obj
   else
     raise "Invalid #{type} object: #{obj}" unless obj.kind_of?(type)
     obj
@@ -74,6 +80,7 @@ options = {
   :migration_nfs => parse_property(config, "migration_nfs", String, :optional => true),
   :image_dir=> parse_property(config, "image_dir", String),
   :max_space => parse_property(config, "max_space", Integer),
+  :quota_enforce => parse_property(config, "quota_enforce", Boolean),
   :max_memory => parse_property(config, "max_memory", Integer)
 }
 

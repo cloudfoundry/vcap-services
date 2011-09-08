@@ -10,6 +10,7 @@ max_memory: 128
 # disk space in MB
 available_space: 4096
 max_space: 100
+quota_enforce: false
 node_id: mongodb_node_1
 mongod_path: mongod
 mongorestore_path: mongorestore
