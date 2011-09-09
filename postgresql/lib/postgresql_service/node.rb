@@ -61,6 +61,7 @@ class VCAP::Services::Postgresql::Node
     @max_db_size = options[:max_db_size] * 1024 * 1024
     @max_long_query = options[:max_long_query]
     @max_long_tx = options[:max_long_tx]
+    @db_conn_limit = options[:db_conn_limit]
 
     @connection = postgresql_connect(@postgresql_config["host"],@postgresql_config["user"],@postgresql_config["pass"],@postgresql_config["port"],@postgresql_config["database"])
 
@@ -321,7 +322,8 @@ class VCAP::Services::Postgresql::Node
       user = bindusers[0].user
       sys_user = bindusers[0].sys_user
       @logger.info("Creating: #{provisionedservice.inspect}")
-      @connection.query("CREATE DATABASE #{name}")
+      @logger.debug("db_conn_limit: #{@db_conn_limit}")
+      @connection.query("CREATE DATABASE #{name} WITH CONNECTION LIMIT = #{@db_conn_limit}")
       @connection.query("REVOKE ALL ON DATABASE #{name} FROM PUBLIC")
       if not create_database_user(name, bindusers[0], false) then
         raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
