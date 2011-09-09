@@ -37,6 +37,7 @@ def getNodeTestConfig()
     :postgresql => parse_property(config, "postgresql", Hash),
     :ip_route => parse_property(config, "ip_route", String, :optional => true),
     :max_long_tx => parse_property(config, "max_long_tx", Integer),
+    :db_conn_limit => parse_property(config, "db_conn_limit", Integer)
   }
   options
 end
