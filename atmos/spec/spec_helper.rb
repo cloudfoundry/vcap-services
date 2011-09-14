@@ -1,3 +1,4 @@
+# Copyright (c) 2009-2011 VMware, Inc.
 $:.unshift File.join(File.dirname(__FILE__), '..', 'lib')
 $LOAD_PATH.unshift(File.expand_path("../../../", __FILE__))
 
@@ -63,16 +64,16 @@ def get_provisioner_config()
     # Following options are for Thin
     :host => 'localhost',
     :port => HTTP_PORT,
-    :aux => {
-      :atmos_host => ENV['VCAP_ATMOS_HOST'],
-      :atmos_port => ENV['VCAP_ATMOS_PORT'] || "443",
-      :atmos_tenant => ENV['VCAP_ATMOS_TENANT'],
-      :atmos_tenantadmin => ENV['VCAP_ATMOS_TENANT_ADMIN'],
-      :atmos_tenantpasswd => ENV['VCAP_ATMOS_TENANT_PASSWD']
+    :atmos => {
+      :host => ENV['VCAP_ATMOS_HOST'],
+      :port => ENV['VCAP_ATMOS_PORT'] || "443",
+      :tenant => ENV['VCAP_ATMOS_TENANT'],
+      :tenantadmin => ENV['VCAP_ATMOS_TENANT_ADMIN'],
+      :tenantpasswd => ENV['VCAP_ATMOS_TENANT_PASSWD']
     }
   }
 
-  options[:logger].level = Logger::FATAL
+  options[:logger].level = Logger::DEBUG
   options
 end
 
@@ -83,9 +84,3 @@ def start_server(opts)
   Thin::Server.start(opts[:host], opts[:port], sg)
 end
 
-
-def get_raw_config()
-  config_file = File.join(File.dirname(__FILE__), "../config/atmos_gateway.yml")
-  config = YAML.load_file(config_file)
-  config = symbolize_keys(config)
-end
