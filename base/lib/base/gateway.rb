@@ -69,7 +69,7 @@ class VCAP::Services::Base::Gateway
     config[:service][:label] = "#{config[:service][:name]}-#{config[:service][:version]}"
     config[:service][:url]   = "http://#{config[:host]}:#{config[:port]}"
     cloud_controller_uri = config[:cloud_controller_uri] || default_cloud_controller_uri
-
+    
     # Go!
     EM.run do
       sp = provisioner_class.new(
@@ -79,7 +79,8 @@ class VCAP::Services::Base::Gateway
              :ip_route => config[:ip_route],
              :mbus => config[:mbus],
              :node_timeout => config[:node_timeout] || 2,
-             :allow_over_provisioning => config[:allow_over_provisioning]
+             :allow_over_provisioning => config[:allow_over_provisioning],
+             :status => config[:status]
            )
       sg = VCAP::Services::AsynchronousServiceGateway.new(
              :proxy => config[:proxy],

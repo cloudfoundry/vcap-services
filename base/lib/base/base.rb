@@ -35,12 +35,21 @@ class VCAP::Services::Base::Base
     @node_nats = NATS.connect(:uri => options[:mbus]) {
       on_connect_node
     }
+    status_port = status_username = status_password = nil
+    if not options[:status].nil?
+        status_port = options[:status][:port]
+        status_username = options[:status][:username]
+        status_password = options[:status][:password]
+    end
     VCAP::Component.register(
       :nats => @node_nats,
       :type => service_description,
       :host => @local_ip,
       :index => options[:index] || 0,
-      :config => options
+      :config => options,
+      :port => status_port,
+      :username => status_username,
+      :password => status_password
     )
     z_interval = options[:z_interval] || 30
     EM.add_timer(5) { update_varz } # give service a chance to wake up
