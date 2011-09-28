@@ -123,6 +123,30 @@ describe "mongodb_node provision" do
     end
   end
 
+  it "should enforce no more than max connection to be accepted" do
+    conn_refused = false
+    connections = []
+
+    # By default, mongodb ensures there're no more than 819 connections
+    # for each instance. But it seems for mongodb-1.8.1-32bit, less than
+    # 819 connections can be created because of the "can't create new
+    # thread, closing connection" error. However, as long as the max number
+    # of 819 is enforced, we are good with it.
+    820.times do
+      begin
+        connections << Mongo::Connection.new('localhost', @resp['port'])
+      rescue Mongo::ConnectionFailure => e
+        @logger.debug(e)
+        conn_refused = true
+        connections.each do |c|
+          c.close
+        end
+      end
+    end
+
+    conn_refused.should == true
+  end
+
   it "should return error when unprovisioning a non-existed instance" do
     EM.run do
       e = nil
