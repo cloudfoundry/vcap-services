@@ -46,6 +46,10 @@ class VCAP::Services::MongoDB::Backup < VCAP::Services::Base::Backup
       command = "find #{path} -name system.users.bson -exec rm -f '{}' \\;"
       res = CMDHandle.execute( command,cmd_timeout)
       echo "#{command} result: #{res}", !res
+
+      if @shutdown
+        exit
+      end
     end
     echo "Backup Done!"
   end
