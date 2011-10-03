@@ -30,10 +30,27 @@ class VCAP::Services::Base::Gateway
   abstract :default_config_file
   abstract :provisioner_class
 
-  CC_CONFIG_FILE = File.expand_path("../../../../../cloud_controller/config/cloud_controller.yml", __FILE__)
+  if ENV["CLOUD_FOUNDRY_CONFIG_PATH"]
+    CC_CONFIG_FILE = File.expand_path(ENV["CLOUD_FOUNDRY_CONFIG_PATH"], "cloud_controller.yml")
+  else
+    CC_CONFIG_FILE = File.expand_path("../../../../../cloud_controller/config/cloud_controller.yml", __FILE__)
+  end
 
   def parse_config
     config_file = default_config_file
+    if ENV["CLOUD_FOUNDRY_CONFIG_PATH"]
+      # These are the only services supported by chef scripts right now
+      case provisioner_class.to_s
+      # Note: Convert to string because only the class belonging to the
+      #       instantiated service is defined
+      when "VCAP::Services::Redis::Provisioner"
+        config_file = File.join(ENV["CLOUD_FOUNDRY_CONFIG_PATH"], "redis_gateway.yml")
+      when "VCAP::Services::MongoDB::Provisioner"
+        config_file = File.join(ENV["CLOUD_FOUNDRY_CONFIG_PATH"], "mongodb_gateway.yml")
+      when "VCAP::Services::Mysql::Provisioner"
+        config_file = File.join(ENV["CLOUD_FOUNDRY_CONFIG_PATH"], "mysql_gateway.yml")
+      end
+    end
 
     OptionParser.new do |opts|
       opts.banner = "Usage: $0 [options]"

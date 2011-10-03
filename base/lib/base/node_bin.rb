@@ -29,6 +29,19 @@ class VCAP::Services::Base::NodeBin
 
   def start
     config_file = default_config_file
+    if ENV["CLOUD_FOUNDRY_CONFIG_PATH"]
+      # These are the only services supported by chef scripts right now
+      case node_class.to_s
+      # Note: Convert to string because only the class belonging to the
+      #       instantiated service is defined
+      when "VCAP::Services::Redis::Node"
+        config_file = File.join(ENV["CLOUD_FOUNDRY_CONFIG_PATH"], "redis_node.yml")
+      when "VCAP::Services::MongoDB::Node"
+        config_file = File.join(ENV["CLOUD_FOUNDRY_CONFIG_PATH"], "mongodb_node.yml")
+      when "VCAP::Services::Mysql::Node"
+        config_file = File.join(ENV["CLOUD_FOUNDRY_CONFIG_PATH"], "mysql_node.yml")
+      end
+    end
 
     OptionParser.new do |opts|
       opts.banner = "Usage: #{$0.split(/\//)[-1]} [options]"
