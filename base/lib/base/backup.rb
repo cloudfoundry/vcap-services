@@ -38,39 +38,37 @@ class VCAP::Services::Base::Backup
     if File.open(script_file).flock(File::LOCK_EX|File::LOCK_NB)
       blk.call
     else
-      warn "Script #{ script_file } is already running"
+      echo "Script #{ script_file } is already running",true
     end
   end
 
   def start
     single_app do
-      puts "#{File.basename(script_file)} starts"
-
+      echo "#{File.basename(script_file)} starts"
       @config_file = default_config_file
-
       parse_options
 
-      puts "Load config file"
+      echo "Load config file"
       # load conf file
       begin
         @config = YAML.load(File.open(@config_file))
       rescue => e
-        puts "Could not read configuration file: #{e}"
+        echo "Could not read configuration file: #{e}",true
         exit
       end
 
       # Setup logger
-      puts @config["logging"]
+      echo @config["logging"]
       VCAP::Logging.setup_from_config(@config["logging"])
       # Use running binary name for logger identity name.
       @logger = VCAP::Logging.logger(File.basename(script_file))
 
-      puts "Check mount points"
+      echo "Check mount points"
       check_mount_points
 
       # make sure backup dir on nfs storage exists
       @nfs_base = @config["backup_base_dir"] + "/backups/" + @config["service_name"]
-      puts "Check NFS base"
+      echo "Check NFS base"
       if File.directory? @nfs_base
         echo @nfs_base + " exists"
       else
@@ -83,13 +81,13 @@ class VCAP::Services::Base::Backup
         end
       end
 
-      puts "Run backup task"
+      echo "Run backup task"
       backup_db
-      puts "#{File.basename(script_file)} task is completed"
+      echo "#{File.basename(script_file)} task is completed"
 
     end
   rescue => e
-    puts "Error: #{e.message}\n #{e.backtrace}"
+    echo "Error: #{e.message}\n #{e.backtrace}",true
   end
 
   def get_dump_path(name,mode=0)
@@ -112,10 +110,11 @@ class VCAP::Services::Base::Backup
   end
 
   def echo(output, err=false)
-    puts output
     if err
+      $stderr.puts output
       @logger.error(output) unless @logger.nil?
     else
+      $stdout.puts output
       @logger.info(output) unless @logger.nil?
     end
   end
