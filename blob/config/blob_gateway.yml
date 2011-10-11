@@ -1,0 +1,22 @@
+---
+# cloud_controller_uri: api.vcap.me
+service:
+  name: blob
+  version: "0.4"
+  description: 'Blob Gateway'
+  plans: ['free']
+  tags: ['blob', 'blob-0.4', 'nosql']
+ip_route: localhost
+#proxy:
+#   host: proxy
+#   port: 8080
+#   keepalive: true
+index: 0
+token: "0xdeadbeef"
+mbus: nats://localhost:4222
+logging:
+  level: debug
+  file : blob_gw.log
+pid: /var/vcap/sys/run/blob_service.pid
+# allow_over_provisioning: false
+# z_interval: 30
