@@ -8,6 +8,26 @@ require "datamapper"
 require "uuidtools"
 require "redis"
 
+class Redis
+  def config(config_command_name, action, *args)
+    synchronize do
+      reply = @client.call [config_command_name.to_sym, action, *args]
+
+      if reply.kind_of?(Array) && action == :get
+        Hash[*reply]
+      else
+        reply
+      end
+    end
+  end
+
+  def shutdown(shutdown_command_name)
+    synchronize do
+      @client.call(shutdown_command_name.to_sym)
+    end
+  end
+end
+
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
 require 'base/node'
 
@@ -66,6 +86,8 @@ class VCAP::Services::Redis::Node
     @local_db = options[:local_db]
     @disable_password = "disable-#{UUIDTools::UUID.random_create.to_s}"
     @redis_log_dir = options[:redis_log_dir]
+    @config_command_name = @options[:command_rename_prefix] + "-config"
+    @shutdown_command_name = @options[:command_rename_prefix] + "-shutdown"
   end
 
   def pre_send_announcement
@@ -334,6 +356,8 @@ class VCAP::Services::Redis::Node
       swap_file = File.join(dir, "redis.swap")
       vm_max_memory = (memory * 0.7).round
       vm_pages = (@max_swap * 1024 * 1024 / 32).round # swap in bytes / size of page (32 bytes)
+      config_command = @config_command_name
+      shutdown_command = @shutdown_command_name
 
       config = @config_template.result(Kernel.binding)
       config_path = File.join(dir, "redis.conf")
@@ -389,18 +413,12 @@ class VCAP::Services::Redis::Node
   def stop_redis_server(instance)
     redis = Redis.new({:port => instance.port, :password => instance.password})
     begin
-      redis.shutdown
+      redis.shutdown(@shutdown_command_name)
     rescue => e
-      if e.class == Errno::ECONNREFUSED
-        # FIXME: it will raise exception even if shutdown successfully,
-        # should be a redis ruby binding bug. Here just ignore it.
-      elsif e.class == RuntimeError
+      if e.class == RuntimeError
         # It could be a disabled instance
         redis = Redis.new({:port => instance.port, :password => @disable_password})
-        begin
-          redis.shutdown
-        rescue => e
-        end
+        redis.shutdown(@shutdown_command_name)
       end
     end
   end
@@ -470,7 +488,7 @@ class VCAP::Services::Redis::Node
 
   def get_config(port, password, key)
     redis = Redis.new({:port => port, :password => password})
-    redis.config(:get, key)[key]
+    redis.config(@config_command_name, :get, key)[key]
   rescue => e
     raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
   ensure
@@ -482,7 +500,7 @@ class VCAP::Services::Redis::Node
 
   def set_config(port, password, key, value)
     redis = Redis.new({:port => port, :password => password})
-    redis.config(:set, key, value)
+    redis.config(@config_command_name, :set, key, value)
   rescue => e
     raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
   ensure

@@ -22,7 +22,7 @@ describe VCAP::Services::Redis::Node do
     @local_db_file = "/tmp/redis_node_" + Time.now.to_i.to_s + ".db"
     @options = {
       :logger => @logger,
-      :base_dir => "/var/vcap/services/redis/instances",
+      :base_dir => "/tmp/services/redis/instances",
       :redis_server_path => "redis-server",
       :local_ip => "127.0.0.1",
       :available_memory => 4096,
@@ -33,8 +33,10 @@ describe VCAP::Services::Redis::Node do
       :local_db => "sqlite3:" + @local_db_file,
       :port_range => Range.new(5000, 25000),
       :mbus => "nats://localhost:4222",
-      :redis_log_dir => "/tmp/redis_log"
+      :redis_log_dir => "/tmp/redis_log",
+      :command_rename_prefix => "protect-command",
     }
+    FileUtils.mkdir_p(@options[:base_dir])
     FileUtils.mkdir_p(@options[:redis_log_dir])
 
     EM.run do
@@ -54,6 +56,7 @@ describe VCAP::Services::Redis::Node do
 
   after :all do
     FileUtils.rm_f(@local_db_file)
+    FileUtils.rm_rf(@options[:base_dir])
     FileUtils.rm_f(@options[:redis_log_dir])
   end
 
