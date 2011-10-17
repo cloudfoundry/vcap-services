@@ -16,3 +16,5 @@ port_range:
   first: 5000
   last: 25000
 migration_nfs: /mnt/appcloud
+# z_interval: 30
+redis_log_dir: /var/vcap/sys/log/redis
