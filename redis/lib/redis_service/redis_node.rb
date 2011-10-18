@@ -4,7 +4,6 @@ require "fileutils"
 require "logger"
 require "pp"
 
-require "datamapper"
 require "uuidtools"
 require "redis"
 
@@ -33,6 +32,7 @@ end
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
 require 'base/node'
+require "datamapper_l"
 
 module VCAP
   module Services
