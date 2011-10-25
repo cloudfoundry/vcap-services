@@ -35,6 +35,7 @@ describe VCAP::Services::Redis::Node do
       :mbus => "nats://localhost:4222",
       :redis_log_dir => "/tmp/redis_log",
       :command_rename_prefix => "protect-command",
+      :max_clients => 10
     }
     FileUtils.mkdir_p(@options[:base_dir])
     FileUtils.mkdir_p(@options[:redis_log_dir])
@@ -453,6 +454,25 @@ describe VCAP::Services::Redis::Node do
       credentials_list[1].each do |key, value|
         Redis.new({:port => value["credentials"]["port"], :password => value["credentials"]["password"]}).get("test_key").should == "test_value"
       end
+    end
+  end
+
+  describe "Node.max_clients" do
+    it "should limit the max clients number" do
+      @credentials = @node.provision(:free)
+      sleep 1
+      redis = []
+      for i in 1..@options[:max_clients]
+        redis[i - 1] = Redis.new({:port => @credentials["port"], :password => @credentials["password"]})
+        redis[i - 1].info
+      end
+      Redis.new({:port => @credentials["port"], :password => @credentials["password"]})
+      expect {Redis.new({:port => @credentials["port"], :password => @credentials["password"]}).info}.should raise_error(RuntimeError)
+      for i in 0..@options[:max_clients]
+        redis[i - 1].quit
+      end
+      Redis.new({:port => @credentials["port"], :password => @credentials["password"]}).info
+      @node.unprovision(@credentials["name"])
     end
   end
 
