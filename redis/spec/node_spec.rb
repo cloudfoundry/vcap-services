@@ -7,7 +7,7 @@ module VCAP
   module Services
     module Redis
       class Node
-         attr_reader :base_dir, :redis_server_path, :local_ip, :available_memory, :max_memory, :max_swap, :node_id, :config_template, :free_ports
+         attr_reader :base_dir, :redis_server_path, :local_ip, :available_memory, :max_memory, :max_swap, :node_id, :config_template, :free_ports, :redis_timeout
          attr_accessor :logger, :local_db
       end
     end
@@ -35,7 +35,7 @@ describe VCAP::Services::Redis::Node do
       :mbus => "nats://localhost:4222",
       :redis_log_dir => "/tmp/redis_log",
       :command_rename_prefix => "protect-command",
-      :max_clients => 10
+      :max_clients => 100
     }
     FileUtils.mkdir_p(@options[:base_dir])
     FileUtils.mkdir_p(@options[:redis_log_dir])
@@ -476,6 +476,17 @@ describe VCAP::Services::Redis::Node do
       # Now the new connection will be successful
       Redis.new({:port => @credentials["port"], :password => @credentials["password"]}).info
       @node.unprovision(@credentials["name"])
+    end
+  end
+
+  describe "Node.timeout" do
+    it "should raise exception when the block is timeout" do
+      expect {Timeout::timeout(@node.redis_timeout) do
+        sleep @node.redis_timeout + 0.1
+      end}.should raise_error(Timeout::Error)
+      expect {Timeout::timeout(@node.redis_timeout) do
+        sleep @node.redis_timeout - 0.1
+      end}.should_not raise_error
     end
   end
 
