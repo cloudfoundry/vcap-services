@@ -54,7 +54,8 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     @node_timeout = opts[:node_timeout]
     @handles_uri = "#{@cld_ctrl_uri}/services/v1/offerings/#{@service[:label]}/handles"
     @handle_fetch_interval = opts[:handle_fetch_interval] || 1
-    @check_orphan_interval = opts[:check_orphan_interval]
+    @check_orphan_interval = opts[:check_orphan_interval] || -1
+    @double_check_orphan_interval = opts[:double_check_orphan_interval] || 300
     @handle_fetched = false
     @svc_json     = {
       :label  => @service[:label],
@@ -102,10 +103,21 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     EM.next_tick { fetch_handles(&update_callback) }
 
     if @check_orphan_interval > 0
-      update_callback_for_check_orphan = Proc.new do |resp|
-        @provisioner.check_orphan(resp.handles) {|msg| }
+      handler_double_check_orphan = Proc.new do |resp|
+        @provisioner.double_check_orphan(resp.handles)
       end
-      EM.add_periodic_timer(@check_orphan_interval) { fetch_handles(&update_callback_for_check_orphan) }
+
+      handler_check_orphan = Proc.new do |resp|
+        @provisioner.check_orphan(resp.handles) do |msg|
+          if msg['success']
+            @logger.info("Check orphan is requested")
+            EM.add_periodic_timer(@double_check_orphan_interval) { fetch_handles(&handler_double_check_orphan) }
+          else
+            @logger.error("Error on requesting to check orphan #{msg['response']}")
+          end
+        end
+      end
+      EM.add_periodic_timer(@check_orphan_interval) { fetch_handles(&handler_check_orphan) }
     end
 
     # Register update handle callback
@@ -251,6 +263,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     fetch_handles do |resp|
       @provisioner.check_orphan(resp.handles) do |msg|
         if msg['success']
+          EM.add_periodic_timer(@double_check_orphan_interval) { fetch_handles{ |rs| @provisioner.double_check_orphan(rs.handles) } }
           async_reply
         else
           async_reply_error(msg['response'])
