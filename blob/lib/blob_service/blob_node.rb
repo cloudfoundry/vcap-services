@@ -154,8 +154,7 @@ class VCAP::Services::Blob::Node
     list = []
     ProvisionedService.all.each do |instance|
       begin
-        # TODO:get all user names from ~admin bucket
-        req = Net::HTTP::Get.new("/~bind")
+        req = Net::HTTP::Get.new("/~bind", {"Authorization" => "Basic " + Base64.strict_encode64("#{instance.keyid}:#{instance.secretid}").strip})
         res = Net::HTTP.start(@local_ip, instance.port) {|http|
           http.request(req)
         }
@@ -405,7 +404,7 @@ class VCAP::Services::Blob::Node
     creds = "{\"#{options[:username]}\":\"#{options[:password]}\"}";
     #creds = '{"'+options[:username]+'":"'+options[:password]+'"}'
     res = Net::HTTP.start(@local_ip, options[:port]) {|http|
-      http.send_request('PUT','/~bind',creds)
+      http.send_request('PUT','/~bind',creds, {"Authorization" => "Basic " + Base64.strict_encode64("#{options[:admin]}:#{options[:adminpass]}").strip})
     }
     raise "Add blobgw user failed" if (res.nil? || res.code != "200")
     @logger.debug("user #{options[:username]} added")
@@ -416,7 +415,7 @@ class VCAP::Services::Blob::Node
     creds = "{\"#{options[:username]}\":\"#{options[:password]}\"}";
     #creds = '{"'+options[:username]+'":"'+options[:password]+'"}'
     res = Net::HTTP.start(@local_ip, options[:port]) {|http|
-      http.send_request('PUT','/~unbind',creds)
+      http.send_request('PUT','/~unbind',creds, {"Authorization" => "Basic " + Base64.strict_encode64("#{options[:admin]}:#{options[:adminpass]}").strip})
     }
     raise "Delete blobgw user failed" if (res.nil? || res.code != "200")
     @logger.debug("user #{options[:username]} removed")
