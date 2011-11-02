@@ -8,6 +8,7 @@ require "datamapper"
 require "uuidtools"
 require "mysql"
 require "open3"
+require "thread"
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
 require 'base/node'
@@ -79,6 +80,7 @@ class VCAP::Services::Mysql::Node
     check_db_consistency()
 
     @available_storage = options[:available_storage] * 1024 * 1024
+    @available_storage_lock = Mutex.new
     @node_capacity = @available_storage
     ProvisionedService.all.each do |provisioned_service|
       @available_storage -= storage_for_service(provisioned_service)
@@ -90,6 +92,7 @@ class VCAP::Services::Mysql::Node
     get_qps
     @long_queries_killed = 0
     @long_tx_killed = 0
+    @statistics_lock = Mutex.new
     @provision_served = 0
     @binding_served = 0
   end
@@ -109,10 +112,12 @@ class VCAP::Services::Mysql::Node
   end
 
   def announcement
-    a = {
-      :available_storage => @available_storage
-    }
-    a
+    @available_storage_lock.synchronize do
+      a = {
+        :available_storage => @available_storage
+      }
+      a
+    end
   end
 
   def check_db_consistency()
@@ -233,7 +238,9 @@ class VCAP::Services::Mysql::Node
       raise MysqlError.new(MysqlError::MYSQL_LOCAL_DB_ERROR)
     end
     response = gen_credential(provisioned_service.name, provisioned_service.user, provisioned_service.password)
-    @provision_served += 1
+    @statistics_lock.synchronize do
+      @provision_served += 1
+    end
     return response
   rescue => e
     delete_database(provisioned_service)
@@ -254,7 +261,9 @@ class VCAP::Services::Mysql::Node
     end
     delete_database(provisioned_service)
     storage = storage_for_service(provisioned_service)
-    @available_storage += storage
+    @available_storage_lock.synchronize do
+      @available_storage += storage
+    end
     if not provisioned_service.destroy
       @logger.error("Could not delete service: #{provisioned_service.errors.inspect}")
       raise MysqlError.new(MysqError::MYSQL_LOCAL_DB_ERROR)
@@ -288,7 +297,9 @@ class VCAP::Services::Mysql::Node
 
       response = gen_credential(name, binding[:user], binding[:password])
       @logger.debug("Bind response: #{response.inspect}")
-      @binding_served += 1
+      @statistics_lock.synchronize do
+        @binding_served += 1
+      end
       return response
     rescue => e
       delete_database_user(binding[:user]) if binding
@@ -315,7 +326,9 @@ class VCAP::Services::Mysql::Node
       @connection.query("CREATE DATABASE #{name}")
       create_database_user(name, user, password)
       storage = storage_for_service(provisioned_service)
-      @available_storage -= storage
+      @available_storage_lock.synchronize do
+        @available_storage -= storage
+      end
       @logger.debug("Done creating #{provisioned_service.inspect}. Took #{Time.now - start}.")
       return true
     rescue Mysql::Error => e
@@ -505,13 +518,17 @@ class VCAP::Services::Mysql::Node
     varz[:database_status] = status
     # node capacity
     varz[:node_storage_capacity] = @node_capacity
-    varz[:node_storage_used] = @node_capacity - @available_storage
+    @available_storage_lock.synchronize do
+      varz[:node_storage_used] = @node_capacity - @available_storage
+    end
     # how many long queries and long txs are killed.
     varz[:long_queries_killed] = @long_queries_killed
     varz[:long_transactions_killed] = @long_tx_killed
     # how many provision/binding operations since startup.
-    varz[:provision_served] = @provision_served
-    varz[:binding_served] = @binding_served
+    @statistics_lock.synchronize do
+      varz[:provision_served] = @provision_served
+      varz[:binding_served] = @binding_served
+    end
     varz
   rescue => e
     @logger.error("Error during generate varz: #{e}")
