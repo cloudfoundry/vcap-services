@@ -1,0 +1,7 @@
+Verified+1: Andrew Liu <aliu@vmware.com>
+Code-Review+2: Nicholas Kushmerick <nicholask@vmware.com>
+Submitted-by: Andrew Liu <aliu@vmware.com>
+Submitted-at: Fri, 04 Nov 2011 01:31:35 +0000
+Reviewed-on: http://cloudfoundry-codereview.qa.mozycloud.com/gerrit/1901
+Project: vcap-services
+Branch: refs/heads/services-r6
