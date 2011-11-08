@@ -82,9 +82,11 @@ class VCAP::Services::Base::NodeBin
     File.open(pid_file, 'w') { |f| f.puts "#{Process.pid}" }
 
     EM.run do
-      node = node_class.new(options)
-      trap("INT") {shutdown(node)}
-      trap("TERM") {shutdown(node)}
+      Fiber.new{
+        node = node_class.new(options)
+        trap("INT") {shutdown(node)}
+        trap("TERM") {shutdown(node)}
+      }.resume
     end
   end
 

@@ -84,29 +84,31 @@ class VCAP::Services::Base::Gateway
 
     # Go!
     EM.run do
-      sp = provisioner_class.new(
-             :logger   => @config[:logger],
-             :index    => @config[:index],
-             :version  => @config[:service][:version],
-             :ip_route => @config[:ip_route],
-             :mbus => @config[:mbus],
-             :node_timeout => node_timeout,
-             :z_interval => @config[:z_interval],
-             :allow_over_provisioning => @config[:allow_over_provisioning],
-             :max_nats_payload => @config[:max_nats_payload]
-           )
-      sg = async_gateway_class.new(
-             :proxy   => @config[:proxy],
-             :service => @config[:service],
-             :token   => @config[:token],
-             :logger  => @config[:logger],
-             :provisioner => sp,
-             :node_timeout => node_timeout,
-             :cloud_controller_uri => cloud_controller_uri,
-             :check_orphan_interval => @config[:check_orphan_interval],
-             :double_check_orphan_interval => @config[:double_check_orphan_interval]
-           )
-      Thin::Server.start(@config[:host], @config[:port], sg)
+      Fiber.new {
+        sp = provisioner_class.new(
+          :logger   => @config[:logger],
+          :index    => @config[:index],
+          :version  => @config[:service][:version],
+          :ip_route => @config[:ip_route],
+          :mbus => @config[:mbus],
+          :node_timeout => node_timeout,
+          :z_interval => @config[:z_interval],
+          :allow_over_provisioning => @config[:allow_over_provisioning],
+          :max_nats_payload => @config[:max_nats_payload]
+        )
+        sg = async_gateway_class.new(
+          :proxy   => @config[:proxy],
+          :service => @config[:service],
+          :token   => @config[:token],
+          :logger  => @config[:logger],
+          :provisioner => sp,
+          :node_timeout => node_timeout,
+          :cloud_controller_uri => cloud_controller_uri,
+          :check_orphan_interval => @config[:check_orphan_interval],
+          :double_check_orphan_interval => @config[:double_check_orphan_interval]
+        )
+        Thin::Server.start(@config[:host], @config[:port], sg)
+      }.resume
     end
   end
 
