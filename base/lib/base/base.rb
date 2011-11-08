@@ -7,6 +7,7 @@ require 'nats/client'
 $LOAD_PATH.unshift File.dirname(__FILE__)
 require 'abstract'
 require 'service_error'
+require 'fiber'
 
 module VCAP
   module Services
@@ -42,9 +43,14 @@ class VCAP::Services::Base::Base
         @logger.error("NATS problem, #{e}")
       end
     end
-    @node_nats = NATS.connect(:uri => options[:mbus]) {
-      on_connect_node
-    }
+    Fiber.new{
+      f = Fiber.current
+      @node_nats = NATS.connect(:uri => options[:mbus]) {
+        EM.next_tick { on_connect_node }
+        f.resume
+      }
+      Fiber.yield
+    }.resume
     VCAP::Component.register(
       :nats => @node_nats,
       :type => service_description,
