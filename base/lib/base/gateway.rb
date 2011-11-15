@@ -88,6 +88,7 @@ class VCAP::Services::Base::Gateway
              :logger   => @config[:logger],
              :index    => @config[:index],
              :version  => @config[:service][:version],
+             :service  => @config[:service],
              :ip_route => @config[:ip_route],
              :mbus => @config[:mbus],
              :node_timeout => node_timeout,

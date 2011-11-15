@@ -1,0 +1,21 @@
+---
+local_db: sqlite3:/var/vcap/services/sqlfire/sqlfire_node.db
+mbus: nats://api.local.me:4222
+base_dir: /var/vcap/services/sqlfire/instances
+index: 0
+ip_route: localhost
+logging:
+  level: debug
+pid: /var/vcap/sys/run/sqlfire_node.pid
+available_memory: 4096
+max_memory: 256
+node_id: sqlfire_node_1
+sqlfire_home: /usr/local/sqlfire/LATEST
+jvm_args:
+port_range:
+  first: 25001
+  last: 45000
+#proxy:
+#   host: proxy
+#   port: 8080
+#   keepalive: true
