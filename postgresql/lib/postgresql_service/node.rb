@@ -28,7 +28,6 @@ require "postgresql_service/postgresql_error"
 class VCAP::Services::Postgresql::Node
 
   KEEP_ALIVE_INTERVAL = 15
-  LONG_QUERY_INTERVAL = 1
   STORAGE_QUOTA_INTERVAL = 1
 
   include VCAP::Services::Postgresql::Util
@@ -66,8 +65,8 @@ class VCAP::Services::Postgresql::Node
     @connection = postgresql_connect(@postgresql_config["host"],@postgresql_config["user"],@postgresql_config["pass"],@postgresql_config["port"],@postgresql_config["database"])
 
     EM.add_periodic_timer(KEEP_ALIVE_INTERVAL) {postgresql_keep_alive}
-    EM.add_periodic_timer(LONG_QUERY_INTERVAL) {kill_long_queries}
-    EM.add_periodic_timer(@max_long_tx/2) {kill_long_transaction}
+    EM.add_periodic_timer(@max_long_query.to_f / 2) {kill_long_queries} if @max_long_query > 0
+    EM.add_periodic_timer(@max_long_tx.to_f / 2) {kill_long_transaction} if @max_long_tx > 0
     EM.add_periodic_timer(STORAGE_QUOTA_INTERVAL) {enforce_storage_quota}
 
     @base_dir = options[:base_dir]
