@@ -30,7 +30,7 @@ end
 
 namespace "test" do
   task "spec" do |t|
-    sh("cd spec && ../../base/bin/nats-util start && rake spec && ../../base/bin/nats-util stop")
+    sh("cd spec && rake spec")
   end
 
  task "spec:rcov" do |t|
