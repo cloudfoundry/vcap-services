@@ -13,7 +13,6 @@ ip_route: localhost
 #   keepalive: true
 index: 0
 token: "0xdeadbeef"
-mbus: nats://localhost:4222
 logging:
   level: debug
 pid: /var/vcap/sys/run/atmos_service.pid
