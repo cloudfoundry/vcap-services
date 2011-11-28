@@ -2,6 +2,9 @@
 local_db: sqlite3:/var/vcap/services/postgresql/postgresql_node.db
 base_dir: /var/vcap/services/postgresql/
 ip_route: 127.0.0.1
+psql_bin: psql
+dump_bin: pg_dump
+gzip_bin: gzip
 mbus: nats://localhost:4222
 logging:
   level: debug

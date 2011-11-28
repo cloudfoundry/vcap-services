@@ -37,7 +37,10 @@ def getNodeTestConfig()
     :postgresql => parse_property(config, "postgresql", Hash),
     :ip_route => parse_property(config, "ip_route", String, :optional => true),
     :max_long_tx => parse_property(config, "max_long_tx", Integer),
-    :max_db_conns => parse_property(config, "max_db_conns", Integer)
+    :max_db_conns => parse_property(config, "max_db_conns", Integer),
+    :psql_bin => parse_property(config, "psql_bin", String),
+    :gzip_bin => parse_property(config, "gzip_bin", String),
+    :dump_bin => parse_property(config, "dump_bin", String)
   }
   options
 end
