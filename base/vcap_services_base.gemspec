@@ -25,4 +25,5 @@ Gem::Specification.new do |s|
   s.add_dependency "thin", "~> 1.2.11"
   s.add_dependency "vcap_common", "~> 1.0.2"
   s.add_dependency "vcap_logging", ">=0.1.3"
+  s.add_dependency "resque-status", "~> 0.2.4"
 end
