@@ -324,6 +324,11 @@ class VCAP::Services::Mysql::Node
     return if credential.nil?
     @logger.debug("Unbind service: #{credential.inspect}")
     name, user, bind_opts,passwd = %w(name user bind_opts password).map{|k| credential[k]}
+
+    # Special case for 'ancient' instances that don't have new credentials for each Bind operation.
+    # Never delete a user that was created as part of the initial provisioning process.
+    return true if ProvisionedService.first(:name => name, :user => user)
+
     # validate the existence of credential, in case we delete a normal account because of a malformed credential
     res = @connection.query("SELECT * from mysql.user WHERE user='#{user}'")
     raise MysqlError.new(MysqlError::MYSQL_CRED_NOT_FOUND, credential.inspect) if res.num_rows() <= 0
