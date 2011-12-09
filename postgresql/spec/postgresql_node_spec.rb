@@ -470,6 +470,25 @@ describe "Postgresql server node" do
     end
   end
 
+  it "should survive checking quota of a non-existent instance" do
+    EM.run do
+      # this test verifies that we've fixed a race condition between
+      # the quota-checker and unprovision/unbind
+      db = @node.provision(@default_plan)
+      service = Provisionedservice.first(:name => db['name'])
+      service.should be
+      @node.unprovision(db)
+      # we have now simulated a situation in which the quota-checker
+      # is processing an unprovisioned instance
+      expect { revoke_write_access(db, service) }.should_not raise_error
+      expect { grant_write_access(db, service) }.should_not raise_error
+      # actually, the bug was not that these methods raised
+      # exceptions, but rather that they called Kernel.exit.  so the
+      # real proof that we've fixed the bug is that this test finishes
+      # at all...
+    end
+  end
+
   after:each do
     @test_dbs.keys.each do |db|
       begin
