@@ -1,0 +1,9 @@
+service_name: mvstore
+backup_base_dir: /mnt/nfs/servicebackup
+# REVIEW (maxw): what means? backup to sqlite3?
+local_db: sqlite3:/var/vcap/services/mvstore/mvstore_node.db
+service_base_dir: /var/vcap/services/mvstore/instances/
+mvstore_dump_path: mvstore_dump
+timeout: 600
+logging:
+  level: debug
