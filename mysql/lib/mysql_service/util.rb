@@ -187,7 +187,7 @@ module VCAP
             @connections.synchronize do
               loop do
                 conn = @connections.shift
-                return conn if conn
+                return verify_connection(conn) if conn
 
                 @cond.wait(@timeout)
 
@@ -201,6 +201,16 @@ module VCAP
                 end
               end
             end
+          end
+
+          def verify_connection(conn)
+            return nil unless conn
+            if not conn.ping
+              # reconnect if connection is not active
+              conn.close
+              conn = Mysql2::Client.new(@options)
+            end
+            conn
           end
 
           def checkin(conn)
