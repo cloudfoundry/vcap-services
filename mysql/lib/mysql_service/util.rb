@@ -118,10 +118,12 @@ module VCAP
         end
 
         class ConnectionPool
+          include Util
           def initialize(options)
             @options = options
             @timeout = options[:wait_timeout] || 10
             @size = (options[:pool] && options[:pool].to_i) || 5
+            @logger = options[:logger] || make_logger
             @connections = []
             @connections.extend(MonitorMixin)
             @cond = @connections.new_cond
@@ -139,21 +141,19 @@ module VCAP
             release_connection(connection_id) if fresh_connection
           end
 
-          def connection_exception(conn)
-            conn.ping
-            return nil
-          rescue Mysql2::Error => exception
-            return exception
-          end
-
+          # verify all pooled connections
           def keep_alive
-            @connections.each do |conn|
-              exception = connection_exception(conn)
-              if exception
-                @logger.error("MySQL connection lost: [#{exception.errno}] #{exception.error}")
-                conn = Mysql2::Client.new(@options)
+            @connections.synchronize do
+              @connections.each_index do |i|
+                conn = @connections[i]
+                if not conn.ping
+                  @logger.debug("Pooled connection #{conn} is dead, try to reconnect.")
+                  conn.close
+                  @connections[i] = Mysql2::Client.new(@options)
+                end
               end
             end
+            true
           end
 
           def close
@@ -165,6 +165,14 @@ module VCAP
           def shutdown
             close
             @connections.clear
+          end
+
+          # Check the connction with mysql
+          def connected?
+            keep_alive
+          rescue => e
+            @logger.warn("Can't connection to mysql: [#{e.errno}] #{e.error}")
+            nil
           end
 
           private
@@ -187,7 +195,7 @@ module VCAP
             @connections.synchronize do
               loop do
                 conn = @connections.shift
-                return conn if conn
+                return verify_connection(conn) if conn
 
                 @cond.wait(@timeout)
 
@@ -201,6 +209,17 @@ module VCAP
                 end
               end
             end
+          end
+
+          def verify_connection(conn)
+            return nil unless conn
+            if not conn.ping
+              # reconnect if connection is not active
+              @logger.debug("Pooled connection #{conn} is dead, try to reconnect.")
+              conn.close
+              conn = Mysql2::Client.new(@options)
+            end
+            conn
           end
 
           def checkin(conn)
