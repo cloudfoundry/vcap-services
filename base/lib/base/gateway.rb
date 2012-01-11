@@ -86,6 +86,7 @@ class VCAP::Services::Base::Gateway
              :logger   => @config[:logger],
              :index    => @config[:index],
              :version  => @config[:service][:version],
+             :service  => @config[:service],
              :ip_route => @config[:ip_route],
              :mbus => @config[:mbus],
              :node_timeout => node_timeout,
@@ -107,7 +108,9 @@ class VCAP::Services::Base::Gateway
              :double_check_orphan_interval => @config[:double_check_orphan_interval],
              :api_extensions => @config[:api_extensions],
            )
-      Thin::Server.start(@config[:host], @config[:port], sg)
+      svr = Thin::Server.new(@config[:host], @config[:port], sg)
+      svr.backend.timeout = @config[:service][:timeout] if @config[:service][:timeout]
+      svr.start
     end
   end
 

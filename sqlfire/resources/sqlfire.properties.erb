@@ -1,0 +1,9 @@
+mcast-port=0
+conserve-sockets=false
+auth-provider=BUILTIN
+password=<%= clear_password %>
+sqlfire.user.<%= user %>=<%= sha_password %>
+
+# These two properties are a workaround for bug #43895
+sqlfire.authentication.required=true
+sqlfire.authentication.provider=BUILTIN
