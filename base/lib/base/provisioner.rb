@@ -17,6 +17,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
   def initialize(options)
     super(options)
+    @service   = options[:service]
     @version   = options[:version]
     @node_timeout = options[:node_timeout]
     @allow_over_provisioning = options[:allow_over_provisioning]
