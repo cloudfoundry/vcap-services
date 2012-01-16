@@ -1,7 +1,5 @@
 # Copyright (c) 2009-2011 VMware, Inc.
-require File.dirname(__FILE__) + '/spec_helper'
-require "redis_service/redis_node"
-require "redis_service/redis_error"
+require File.dirname(__FILE__) + "/spec_helper"
 
 module VCAP
   module Services
@@ -17,32 +15,15 @@ end
 describe VCAP::Services::Redis::Node do
 
   before :all do
-    @logger = Logger.new(STDOUT, "daily")
-    @logger.level = Logger::ERROR
-    @local_db_file = "/tmp/redis_node_" + Time.now.to_i.to_s + ".db"
-    @options = {
-      :logger => @logger,
-      :base_dir => "/tmp/services/redis/instances",
-      :redis_server_path => "redis-server",
-      :local_ip => "127.0.0.1",
-      :available_memory => 4096,
-      :max_memory => 16,
-      :max_swap => 32,
-      :node_id => "redis-node-1",
-      :config_template => File.expand_path("../resources/redis.conf.erb", File.dirname(__FILE__)),
-      :local_db => "sqlite3:" + @local_db_file,
-      :port_range => Range.new(5000, 25000),
-      :mbus => "nats://localhost:4222",
-      :redis_log_dir => "/tmp/redis_log",
-      :command_rename_prefix => "protect-command",
-      :max_clients => 100
-    }
+    @options = getNodeTestConfig
+    @options.freeze
     FileUtils.mkdir_p(@options[:base_dir])
     FileUtils.mkdir_p(@options[:redis_log_dir])
 
+    # Setup code must be wrapped in EM.run
     EM.run do
       @node = VCAP::Services::Redis::Node.new(@options)
-      EM.add_timer(0.1) {EM.stop}
+      EM.stop
     end
   end
 
@@ -56,7 +37,7 @@ describe VCAP::Services::Redis::Node do
   end
 
   after :all do
-    FileUtils.rm_f(@local_db_file)
+    FileUtils.rm_f(@options[:local_db_file])
     FileUtils.rm_rf(@options[:base_dir])
     FileUtils.rm_rf(@options[:redis_log_dir])
   end
