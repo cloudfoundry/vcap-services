@@ -47,10 +47,56 @@ class VCAP::Services::Memcached::Node
   include VCAP::Services::Memcached::Common
   include VCAP::Services::Memcached
 
+  class SASLAdmin
+    class SASLOperationError < StandardError
+      SASL_OPS_CREATE_USER_FAILED = 'Failed to create user. Specified user has already exists.'
+      SASL_OPS_UNKNOWN_ERROR      = 'Failed to create user. Unknown error.'
+    end
+
+    def initialize(logger)
+      @logger = logger
+    end
+
+    def user_list
+      # FIXME: a bit ugly, but works
+      list_str = `sasldblistusers2`.split
+      list_str.delete('userPassword')
+      users = list_str.map do |e|
+        separator = e.index('@') - 1
+        e.slice(0..separator)
+      end
+
+      return users
+    end
+
+    def create_user(user, password)
+      # FIME: error handling about priviredge.
+      users = user_list()
+
+      if users.include?(user)
+        raise SASLOperationError::SASL_OPS_CREATE_USER_FAILED
+      end
+
+      ret = `echo '#{password}' | saslpasswd2 -a memcached -c #{user}  -p`
+
+      if ret == ''
+        return true
+      end
+
+      raise SASLOperationError::SASL_OPS_UNKNOWN_ERROR
+    end
+
+    def delete_user(user)
+      # FIME: error handling about priviredge.
+      ret = `saslpasswd2 -d #{user}`
+    end
+  end
+
   class ProvisionedService
     include DataMapper::Resource
     property :name,       String,   :key => true
     property :port,       Integer,  :unique => true
+    property :user,       String,   :required => true
     property :password,   String,   :required => true
     property :plan,       Enum[:free], :required => true
     property :pid,        Integer
@@ -74,6 +120,7 @@ class VCAP::Services::Memcached::Node
     super(options)
 
     @logger.warn("local_ip: #{@local_ip}")
+    @sasl_admin = SASLAdmin.new(@logger)
     @base_dir = options[:base_dir]
     FileUtils.mkdir_p(@base_dir)
     @memcached_server_path = options[:memcached_server_path]
@@ -129,6 +176,7 @@ class VCAP::Services::Memcached::Node
           instance.port = port
         end
       end
+      instance.user = credentials["user"]
       instance.password = credentials["password"]
     else
       @free_ports_mutex.synchronize do
@@ -137,6 +185,7 @@ class VCAP::Services::Memcached::Node
         instance.port = port
       end
       instance.name = UUIDTools::UUID.random_create.to_s
+      instance.user = UUIDTools::UUID.random_create.to_s
       instance.password = UUIDTools::UUID.random_create.to_s
     end
 
@@ -311,12 +360,13 @@ class VCAP::Services::Memcached::Node
   end
 
   def build_option_string(opt)
-    # ./memcached -m memory_size -p port_num -c connection -P pid_file -t -vvv
+    # ./memcached -m memory_size -p port_num -c connection -P pid_file -t -vvv -S
     str = ''
     str << " -m #{opt['memory']}"
     str << " -p #{opt['port']}"
     str << " -c #{opt['maxclients']}"
     str << " -vvv"
+    str << " -S"
 
     return str
   end
@@ -336,12 +386,16 @@ class VCAP::Services::Memcached::Node
       opt['memory'] = instance.memory
       opt['port'] = instance.port
       opt['password'] = instance.password
+      opt['name'] = instance.name
       opt['maxclients'] = @max_clients
 
       option_string = build_option_string(opt)
       @logger.warn("#{@memcached_server_path} #{option_string}")
 
       close_fds
+
+      # create user 
+      @sasl_admin.create_user(instance.user, instance.password)
 
       log_dir = instance_log_dir(instance.name)
       log_file = File.join(log_dir, "memcachded.log")
@@ -356,6 +410,7 @@ class VCAP::Services::Memcached::Node
     end
   rescue => e
     p e
+    @sasl_admin.delete_user(instance.user)
     raise MemcachedError.new(MemcachedError::MEMCACHED_START_INSTANCE_FAILED, instance.inspect)
   end
 
@@ -398,6 +453,7 @@ class VCAP::Services::Memcached::Node
 
   def stop_memcached_server(instance)
     Timeout::timeout(@memcached_timeout) do
+      @sasl_admin.delete_user(instance.user)
       `kill #{instance.pid}`
     end
   rescue Timeout::Error => e
@@ -529,6 +585,7 @@ class VCAP::Services::Memcached::Node
       "hostname" => @local_ip,
       "host" => @local_ip,
       "port" => instance.port,
+      "user" => instance.user,
       "password" => instance.password,
       "name" => instance.name
     }
