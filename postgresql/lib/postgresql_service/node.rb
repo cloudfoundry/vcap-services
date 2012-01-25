@@ -24,6 +24,7 @@ class VCAP::Services::Postgresql::Node
 
   KEEP_ALIVE_INTERVAL = 15
   STORAGE_QUOTA_INTERVAL = 1
+  OWNERSHIP_MANAGEMENT_INTERVAL = 10
 
   include VCAP::Services::Postgresql::Util
   include VCAP::Services::Postgresql::Common
@@ -84,12 +85,18 @@ class VCAP::Services::Postgresql::Node
     Provisionedservice.all.each do |provisionedservice|
       @available_storage -= storage_for_service(provisionedservice)
     end
+
     check_db_consistency()
+
+    Provisionedservice.all.each do |provisionedservice|
+      migrate_instance(provisionedservice)
+    end
 
     EM.add_periodic_timer(KEEP_ALIVE_INTERVAL) {postgresql_keep_alive}
     EM.add_periodic_timer(@max_long_query.to_f / 2) {kill_long_queries} if @max_long_query > 0
     EM.add_periodic_timer(@max_long_tx.to_f / 2) {kill_long_transaction} if @max_long_tx > 0
     EM.add_periodic_timer(STORAGE_QUOTA_INTERVAL) {enforce_storage_quota}
+    EM.add_periodic_timer(OWNERSHIP_MANAGEMENT_INTERVAL) {global_manage_object_ownership}
   end
 
   def get_available_storage
@@ -148,6 +155,37 @@ class VCAP::Services::Postgresql::Node
         end
       end
     end
+  end
+
+  # This method performs whatever 'migration' (upgrade/downgrade)
+  # steps are required due to incompatible code changes.  There is no
+  # concept of an instance's "version", so migration code may need to
+  # inspect the instance to determine what migrations are required.
+  def migrate_instance(provisionedservice)
+    # Services-r7 and earlier had a bug whereby database objects were
+    # owned by the users created by bind operations, which caused
+    # various problems (eg these objects were discarded on an 'unbind'
+    # operation, only the original creator of an object could modify
+    # it, etc).  Services-r8 and later fix this problem by granting
+    # all "children" bind users to a "parent" role, and running a
+    # daemon that ensures all objects are owned by the "parent" role.
+    # This migration is pretty simple: we can simply call the same
+    # object-ownership method that is called for each 'bind'
+    # operation, and we don't need to worry about calling it more than
+    # once because doing so is harmless.
+    manage_object_ownership(provisionedservice.name, true)
+  end
+
+  def global_manage_object_ownership
+    Provisionedservice.all.each do |provisionedservice|
+      begin
+        manage_object_ownership(provisionedservice.name, false)
+      rescue => x
+        @logger.warn("Exception while managing object ownership: #{x}")
+      end
+    end
+  rescue => x
+    @logger.warn("Exception while managing object ownership (global): #{x}")
   end
 
   def storage_for_service(provisionedservice)
@@ -343,6 +381,10 @@ class VCAP::Services::Postgresql::Node
         raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
       end
 
+      # ensure that bindings used by applications are "children" of a
+      # "parent" role, and that all objects are owned by the parent
+      manage_object_ownership(name, true)
+
       @logger.info("Bind response: #{response.inspect}")
       @binding_served += 1
       return response
@@ -350,6 +392,24 @@ class VCAP::Services::Postgresql::Node
       delete_database_user(binduser,name) if binduser
       raise e
     end
+  end
+
+  def manage_object_ownership(name, enforce_roles)
+    children = Provisionedservice.get(name).bindusers.all(:default_user => false)
+    return if children.empty?
+    connection = postgresql_connect(@postgresql_config["host"],@postgresql_config["user"],@postgresql_config["pass"],@postgresql_config["port"],name)
+    children = children.map { |child| child.user } + children.map { |child| child.sys_user }
+    children = children.join(',')
+    parent = Provisionedservice.get(name).bindusers.all(:default_user => true)[0].user
+    # users that apps see are children of the parent; in some cases
+    # these relationships already hold so this step is conditional
+    connection.query("GRANT #{parent} TO #{children};") if enforce_roles
+    # make all current objects owned by the parent
+    connection.query("REASSIGN OWNED BY #{children} TO #{parent};")
+  rescue => x
+    @logger.warn("Exception while managing object ownership: #{x}")
+  ensure
+    connection.close if connection
   end
 
   def unbind(credential)
@@ -492,8 +552,7 @@ class VCAP::Services::Postgresql::Node
     end
     #Revoke dependencies. Ignore error.
     begin
-      db_connection.query("DROP OWNED BY #{binduser.user}")
-      db_connection.query("DROP OWNED BY #{binduser.sys_user}")
+      manage_object_ownership(db, false)
       if get_postgres_version(db_connection) == '9'
         db_connection.query("REVOKE ALL ON ALL TABLES IN SCHEMA PUBLIC from #{binduser.user} CASCADE")
         db_connection.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA PUBLIC from #{binduser.user} CASCADE")
