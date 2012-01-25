@@ -84,7 +84,12 @@ class VCAP::Services::Postgresql::Node
     Provisionedservice.all.each do |provisionedservice|
       @available_storage -= storage_for_service(provisionedservice)
     end
+
     check_db_consistency()
+
+    Provisionedservice.all.each do |provisionedservice|
+      migrate_instance(provisionedservice)
+    end
 
     EM.add_periodic_timer(KEEP_ALIVE_INTERVAL) {postgresql_keep_alive}
     EM.add_periodic_timer(@max_long_query.to_f / 2) {kill_long_queries} if @max_long_query > 0
@@ -148,6 +153,24 @@ class VCAP::Services::Postgresql::Node
         end
       end
     end
+  end
+
+  # This method performs what 'migration' (upgrade/downgrade) steps
+  # required due to incompatible code changes.  Note that there is no
+  # record of an instance's "version", so this migration code needs to
+  # inspect the instance to determine what migrations are required.
+  def migrate_instance(provisionedservice)
+    # Services-r7 and earlier had a bug whereby database objects were
+    # owned by the users created by binding, which caused various
+    # problems (eg these objects were discarded on an 'unbind'
+    # operation, only , etc).  Services-r8 and later fixes this
+    # problem by granting all "children" bind users to a "parent"
+    # role, and installing a trigger that ensures all objects are
+    # owned by the "parent" role.  This migration is pretty simple: we
+    # can simply call the same object-ownership method that is called
+    # for each 'bind' operation, and we do not need to worry about
+    # calling it more than once because doing so is harmless.
+    manage_object_ownership(provisionedservice.name)
   end
 
   def storage_for_service(provisionedservice)
@@ -343,6 +366,11 @@ class VCAP::Services::Postgresql::Node
         raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
       end
 
+      # ensure that the bindings that applications use are "children"
+      # of a "parent" role, and that all objects are owned by the
+      # parent
+      manage_object_ownership(name)
+
       @logger.info("Bind response: #{response.inspect}")
       @binding_served += 1
       return response
@@ -350,6 +378,67 @@ class VCAP::Services::Postgresql::Node
       delete_database_user(binduser,name) if binduser
       raise e
     end
+  end
+
+  def manage_object_ownership(name)
+    db_connection = postgresql_connect(@postgresql_config["host"],@postgresql_config["user"],@postgresql_config["pass"],@postgresql_config["port"],name)
+    # users that apps see are children of the parent
+    set_role_inheritance(db_connection, name)
+    # keep all objects are owned by the parent
+    create_ownership_trigger(db_connection, name)
+  rescue => x
+    @logger.warn("Exception while managing object ownership: #{x}")
+  ensure
+    db_connection.close if db_connection
+  end
+
+  def set_role_inheritance(db_connection, name)
+    children = get_children(name)
+    return if children.empty?
+    children = children.map { |child| child.user } + children.map { |child| child.sys_user }
+    children = children.join(', ')
+    parent = get_parent(name).user
+    db_connection.query("GRANT #{parent} TO #{children}")
+  rescue => x
+    @logger.warn("Exception while setting role inheritance: #{x}")
+  end
+
+  def create_ownership_trigger(db_connection, name)
+    create_ownership_function(db_connection, name)
+    system_tables = [
+       'pg_class',  # tables, views, sequences, indices, ...
+       'pg_proc'    # functions, procedures
+    ]
+    system_tables.each do |table|
+      trigger = "object_ownership_trigger"
+      db_connection.query("DROP TRIGGER IF EXISTS #{trigger} ON #{table};")
+      db_connection.query("CREATE TRIGGER #{trigger} AFTER INSERT OR UPDATE OR DELETE ON #{table} EXECUTE PROCEDURE reassign_ownership();")
+    end
+  rescue => x
+    @logger.warn("Exception while creating ownership trigger: #{x}")
+  end
+
+  def create_ownership_function(db_connection, name)
+    children = get_children(name)
+    if children.empty?
+      definition = ''
+    else
+      children = children.map { |child| child.user } + children.map { |child| child.sys_user }
+      children = children.join(', ')
+      parent = get_parent(name).user
+      definition = "REASSIGN OWNED BY #{children} TO #{parent};"
+    end
+    db_connection.query("CREATE OR REPLACE FUNCTION reassign_ownership() RETURNS trigger AS 'BEGIN #{definition} RETURN NULL; END;' LANGUAGE plpgsql;")
+  rescue => x
+    @logger.warn("Exception while creating ownership function: #{x}")
+  end
+
+  def get_parent(name)
+    Provisionedservice.get(name).bindusers.all(:default_user => true)[0]
+  end
+
+  def get_children(name)
+    Provisionedservice.get(name).bindusers.all(:default_user => false)
   end
 
   def unbind(credential)
@@ -492,8 +581,7 @@ class VCAP::Services::Postgresql::Node
     end
     #Revoke dependencies. Ignore error.
     begin
-      db_connection.query("DROP OWNED BY #{binduser.user}")
-      db_connection.query("DROP OWNED BY #{binduser.sys_user}")
+      db_connection.query("REASSIGN OWNED BY #{binduser.user}, #{binduser.sys_user} TO #{get_parent(db).user}")
       if get_postgres_version(db_connection) == '9'
         db_connection.query("REVOKE ALL ON ALL TABLES IN SCHEMA PUBLIC from #{binduser.user} CASCADE")
         db_connection.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA PUBLIC from #{binduser.user} CASCADE")
