@@ -39,4 +39,11 @@ def get_hostname(credentials)
   return hostname
 end
 
+def get_connect_info(credentials)
+  ret = []
+  hostname = get_hostname(credentials)
+  username = @credentials['user']
+  password = @credentials['password']
 
+  return [hostname, username, password]
+end

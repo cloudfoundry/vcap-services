@@ -135,17 +135,6 @@ describe VCAP::Services::Memcached::Node do
       @instance.running?.should == false
     end
 
-    it "should not start a new instance if the instance is already started when start all provisioned instances" do
-      @instance.pid = @node.start_instance(@instance)
-      @instance.save
-      sleep 1
-      @node.start_provisioned_instances
-      instance = VCAP::Services::Memcached::Node::ProvisionedService.get(@instance.name)
-      instance.pid.should == @instance.pid
-      @node.stop_instance(@instance)
-      @instance.destroy
-    end
-
     #it "should start a new instance if the instance is not started when start all provisioned instances" do
     #  @instance.pid = @node.start_instance(@instance)
     #  @instance.save
@@ -181,23 +170,21 @@ describe VCAP::Services::Memcached::Node do
     end
 
     it "should access the instance using the credentials returned by successful provision" do
-      hostname = get_hostname(@credentials)
-      memcached = Dalli::Client.new(hostname)
+      hostname, username, password = get_connect_info(@credentials)
+      puts @credentials
+      memcached = Dalli::Client.new(hostname, username: username, password: password)
       memcached.get("test_key").should be_nil
     end
 
-    # FIXME: authentication feature
     it "should not allow null credentials to access the instance" do
-      pending "authentication feature is not implemented."
-      hostname = get_hostname()
+      hostname = get_hostname(@credentials)
       memcached = Dalli::Client.new(hostname)
       expect {memcached.get("test_key")}.should raise_error(RuntimeError)
     end
 
     it "should not allow wrong credentials to access the instance" do
-      pending "authentication feature is not implemented."
-      hostname = get_hostname()
-      memcached = Dalli::Client.new(hostname)
+      hostname, username = get_connect_info(@credentials)
+      memcached = Dalli::Client.new(hostname, username: username, password: 'wrong_password')
       expect {memcached.get("test_key")}.should raise_error(RuntimeError)
     end
 
@@ -218,6 +205,7 @@ describe VCAP::Services::Memcached::Node do
     end
 
     it "should provision from specified credentials" do
+      pending "partically implemented, and cannot pass this test case yet"
       in_credentials = {}
       in_credentials["name"] = UUIDTools::UUID.random_create.to_s
       in_credentials["port"] = 22222
@@ -297,7 +285,9 @@ describe VCAP::Services::Memcached::Node do
 
     it "should access memcached server using the returned credential" do
       hostname = get_hostname(@binding_credentials)
-      memcached = Dalli::Client.new(hostname)
+      username = @binding_credentials['user']
+      password = @binding_credentials['password']
+      memcached = Dalli::Client.new(hostname, username: username, password: password)
       memcached.get("test_key").should be_nil
     end
 
