@@ -394,7 +394,7 @@ class VCAP::Services::Memcached::Node
 
       close_fds
 
-      # create user 
+      # create user
       @sasl_admin.create_user(instance.user, instance.password)
 
       log_dir = instance_log_dir(instance.name)
@@ -513,19 +513,21 @@ class VCAP::Services::Memcached::Node
     end
   end
 
-  def get_info(port, password)
+  def get_info(instance)
+    user = instance.user
+    password = instance.password
+    hostname = 'localhost:' + instance.port.to_s
     info = nil
     Timeout::timeout(@memcached_timeout) do
-      #memcached = Dalli::Client.new({:port => port})
-      #info = memcached.info
-      raise MemcachedError.new(MemcachedError::MEMCACHED_NOT_YET_IMPLEMTED)
+      memcached = Dalli::Client.new(hostname, username: user, password: password)
+      info = memcached.stats
     end
-    info
   rescue => e
     raise MemcachedError.new(MemcachedError::MEMCACHED_CONNECT_INSTANCE_FAILED)
   ensure
     begin
       memcached.close if memcached
+      return info[info.keys.first]
     rescue => e
     end
   end
@@ -562,20 +564,23 @@ class VCAP::Services::Memcached::Node
   end
 
   def get_varz(instance)
-    #info = get_info(instance.port, instance.password)
+    @logger.info("Connect to instance: localhost:#{instance.port} #{instance.name}")
+    info = get_info(instance)
     varz = {}
     varz[:name] = instance.name
     varz[:port] = instance.port
     varz[:plan] = instance.plan
     varz[:usage] = {}
     varz[:usage][:max_memory] = instance.memory.to_f * 1024.0
-    # FIXME : get more detail information
-    #varz[:usage][:used_memory] = info["used_memory"].to_f / (1024.0 * 1024.0)
-    #varz[:usage][:max_virtual_memory] = info["vm_conf_max_memory"].to_f / 1024.0
-    #varz[:usage][:used_virtual_memory] = info["vm_stats_used_pages"].to_f * info["vm_conf_page_size"].to_f / (1024.0 * 1024.0)
-    #varz[:usage][:connected_clients_num] = info["connected_clients"].to_i
-    #varz[:usage][:last_save_time] = info["last_save_time"].to_i
-    #varz[:usage][:bgsave_in_progress] = (info["bgsave_in_progress"] == "0" ? false : true)
+    varz[:usage][:max_clients] = @max_clients
+
+    varz[:usage][:bytes] = info['bytes']
+    varz[:usage][:reserved_fds] = info['reserved_fds']
+    varz[:usage][:accepting_conns] = info['accepting_conns']
+    varz[:usage][:uptime] = info['uptime']
+    varz[:usage][:limit_maxbytes] = info['limit_maxbytes']
+    varz[:usage][:bytes_read] = info['bytes_read']
+    @logger.info("varz: #{varz.inspect}")
     varz
   end
 
@@ -593,7 +598,7 @@ class VCAP::Services::Memcached::Node
 
   def get_healthz(instance)
     Timeout::timeout(@memcached_timeout) do
-      memcached = Dalli::Client.new({:port => instance.port, :password => instance.password})
+      memcached = Dalli::Client.new({:port => instance.port, :user => instance.user, :password => instance.password})
       memcached.stats
     end
     "ok"
