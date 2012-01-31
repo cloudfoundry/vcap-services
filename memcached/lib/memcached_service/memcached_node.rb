@@ -597,8 +597,11 @@ class VCAP::Services::Memcached::Node
   end
 
   def get_healthz(instance)
+    user = instance.user
+    password = instance.password
+    hostname = 'localhost:' + instance.port.to_s
     Timeout::timeout(@memcached_timeout) do
-      memcached = Dalli::Client.new({:port => instance.port, :user => instance.user, :password => instance.password})
+      memcached = Dalli::Client.new(hostname, username: user, password: password)
       memcached.stats
     end
     "ok"
