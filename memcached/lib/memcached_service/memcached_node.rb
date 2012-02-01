@@ -140,8 +140,6 @@ class VCAP::Services::Memcached::Node
     @local_db = options[:local_db]
     @disable_password = "disable-#{UUIDTools::UUID.random_create.to_s}"
     @memcached_log_dir = options[:memcached_log_dir]
-    @config_command_name = '' # @options[:command_rename_prefix] + "-config"
-    @shutdown_command_name = 'kill'  #@options[:command_rename_prefix] + "-shutdown"
     @max_clients = @options[:max_clients] || 500
     @memcached_timeout = @options[:memcached_timeout] || 2
   end
@@ -166,18 +164,6 @@ class VCAP::Services::Memcached::Node
           :available_memory => @available_memory
       }
     end
-  end
-
-  # shell CMD wrapper and logger
-  def exe_cmd(cmd, stdin=nil)
-    @logger.debug("Execute shell cmd:[#{cmd}]")
-    o, e, s = Open3.capture3(cmd, :stdin_data => stdin)
-    if s.exitstatus == 0
-      @logger.info("Execute cmd:[#{cmd}] successd.")
-    else
-      @logger.error("Execute cmd:[#{cmd}] failed. Stdin:[#{stdin}], stdout: [#{o}], stderr:[#{e}]")
-    end
-    return [o, e, s]
   end
 
   def provision(plan, credentials = nil, db_file = nil)
@@ -465,16 +451,6 @@ class VCAP::Services::Memcached::Node
 
     Timeout::timeout(@memcached_timeout) do
       Process.kill("KILL", instance.pid.to_i)
-      #cmd = "kill #{instance.pid}"
-      #o, e, s = exe_cmd(cmd)
-      #if s.exitstatus == 0
-      #  return true
-      #else
-      #  return nil
-      #end
-
-      #p o.to_s + e.to_s + s.to_s
-
     end
   rescue Timeout::Error => e
     @logger.warn(e)
@@ -531,23 +507,6 @@ class VCAP::Services::Memcached::Node
     begin
       memcached.close if memcached
       return info[info.keys.first]
-    rescue => e
-    end
-  end
-
-  def get_config(port, password, key)
-    config = nil
-    Timeout::timeout(@memcached_timeout) do
-      #memcached = Dalli::Client.new({:port => port, :password => password})
-      #config = memcached.config(@config_command_name, :get, key)[key]
-      raise MemcachedError.new(MemcachedError::MEMCACHED_NOT_YET_IMPLEMTED)
-    end
-    config
-  rescue => e
-    raise MemcachedError.new(MemcachedError::MEMCACHED_CONNECT_INSTANCE_FAILED)
-  ensure
-    begin
-      memcached.close if memcached
     rescue => e
     end
   end
