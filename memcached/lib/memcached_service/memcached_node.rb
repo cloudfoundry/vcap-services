@@ -49,8 +49,9 @@ class VCAP::Services::Memcached::Node
 
   class SASLAdmin
     class SASLOperationError < StandardError
-      SASL_OPS_CREATE_USER_FAILED = 'Failed to create user. Specified user has already exists.'
-      SASL_OPS_UNKNOWN_ERROR      = 'Failed to create user. Unknown error.'
+      SASL_OPS_USER_ALREADY_EXITST  = 'Failed to create user. Specified user has already exists.'
+      SASL_OPS_ILLEGAL_INPUT        = 'Illegal input.'
+      SASL_OPS_UNKNOWN_ERROR        = 'Failed to create user. Unknown error.'
     end
 
     def initialize(logger)
@@ -70,11 +71,14 @@ class VCAP::Services::Memcached::Node
     end
 
     def create_user(user, password)
-      # FIME: error handling about priviredge.
+      if user.nil? || user.empty?
+        raise SASLOperationError::SASL_OPS_ILLEGAL_INPUT
+      end
+
       users = user_list()
 
       if users.include?(user)
-        raise SASLOperationError::SASL_OPS_CREATE_USER_FAILED
+        raise SASLOperationError::SASL_OPS_USER_ALREADY_EXITST
       end
 
       ret = `echo '#{password}' | saslpasswd2 -a memcached -c #{user}  -p`
@@ -87,7 +91,10 @@ class VCAP::Services::Memcached::Node
     end
 
     def delete_user(user)
-      # FIME: error handling about priviredge.
+      if user.nil? || user.empty?
+        raise SASLOperationError::SASL_OPS_ILLEGAL_INPUT
+      end
+
       ret = `saslpasswd2 -d #{user}`
     end
   end
@@ -161,6 +168,18 @@ class VCAP::Services::Memcached::Node
     end
   end
 
+  # shell CMD wrapper and logger
+  def exe_cmd(cmd, stdin=nil)
+    @logger.debug("Execute shell cmd:[#{cmd}]")
+    o, e, s = Open3.capture3(cmd, :stdin_data => stdin)
+    if s.exitstatus == 0
+      @logger.info("Execute cmd:[#{cmd}] successd.")
+    else
+      @logger.error("Execute cmd:[#{cmd}] failed. Stdin:[#{stdin}], stdout: [#{o}], stderr:[#{e}]")
+    end
+    return [o, e, s]
+  end
+
   def provision(plan, credentials = nil, db_file = nil)
     instance = ProvisionedService.new
     instance.plan = plan
@@ -197,9 +216,12 @@ class VCAP::Services::Memcached::Node
     rescue => e
       raise e
     end
+
     begin
       instance.pid = start_instance(instance, db_file)
+      @sasl_admin.create_user(instance.user, instance.password)
       save_instance(instance)
+      @logger.debug("Started process #{instance.pid}")
     rescue => e1
       begin
         cleanup_instance(instance)
@@ -222,7 +244,7 @@ class VCAP::Services::Memcached::Node
   end
 
   def bind(instance_id, binding_options = :all, credentials = nil)
-    # FIXME: Memcached has no user level security, just return provisioned credentials.
+    # Memcached has no user level security, just return provisioned credentials.
     instance = nil
     if credentials
       instance = get_instance(credentials["name"])
@@ -233,7 +255,7 @@ class VCAP::Services::Memcached::Node
   end
 
   def unbind(credentials)
-    # FIXME: Memcached has no user level security, so has no operation for unbinding.
+    # Memcached has no user level security, so has no operation for unbinding.
     {}
   end
 
@@ -249,25 +271,13 @@ class VCAP::Services::Memcached::Node
     true
   end
 
-  # This function may run in old node or new node, it does these things:
-  # 1. Try to use password in credentials to connect to memcached instance
-  # 2. If connection failed, then it's the old node,
-  #    since the password old node is changed to deny then access,
-  #    if successed, then it's the new node.
-  # 3. For old node, it should restore the password,
-  #    for new node, nothing need to do, all are done in import_instance.
   def enable_instance(service_credentials, binding_credentials_map = {})
     instance = get_instance(service_credentials["name"])
-    if check_password(instance.port, instance.password)
-      # The new node
-      service_credentials = gen_credentials(instance)
-      binding_credentials_map.each do |key, value|
-        binding_credentials_map[key]["credentials"] = gen_credentials(instance)
-      end
-    else
-      # The old node
-      set_config(service_credentials["port"], @disable_password, "requirepass", service_credentials["password"])
+    service_credentials = gen_credentials(instance)
+    binding_credentials_map.each do |key, value|
+      binding_credentials_map[key]["credentials"] = gen_credentials(instance)
     end
+
     [service_credentials, binding_credentials_map]
   rescue => e
     @logger.warn(e)
@@ -319,7 +329,10 @@ class VCAP::Services::Memcached::Node
   end
 
   def start_provisioned_instances
+    @logger.debug("Start provisined instaces....")
+
     ProvisionedService.all.each do |instance|
+      @logger.debug("instance : #{instance.inspect}")
       @free_ports_mutex.synchronize do
         @free_ports.delete(instance.port)
       end
@@ -333,6 +346,8 @@ class VCAP::Services::Memcached::Node
       begin
         pid = start_instance(instance)
         instance.pid = pid
+        @logger.debug("Started Instace. pid is  #{instance.pid}")
+        @sasl_admin.create_user(instance.user, instance.password)
         save_instance(instance)
       rescue => e
         @logger.warn("Error starting instance #{instance.name}: #{e}")
@@ -343,6 +358,8 @@ class VCAP::Services::Memcached::Node
         end
       end
     end
+
+    @logger.debug("Started provisined instaces.")
   end
 
   def save_instance(instance)
@@ -360,12 +377,12 @@ class VCAP::Services::Memcached::Node
   end
 
   def build_option_string(opt)
-    # ./memcached -m memory_size -p port_num -c connection -P pid_file -t -vvv -S
+    # ./memcached -m memory_size -p port_num -c connection -P pid_file -t -v -S
     str = ''
     str << " -m #{opt['memory']}"
     str << " -p #{opt['port']}"
     str << " -c #{opt['maxclients']}"
-    str << " -vvv"
+    str << " -v"
     str << " -S"
 
     return str
@@ -374,47 +391,38 @@ class VCAP::Services::Memcached::Node
   def start_instance(instance, db_file = nil)
     @logger.debug("Starting: #{instance.inspect} on port #{instance.port}")
 
-    pid = fork
-    if pid
-      @logger.debug("Service #{instance.name} started with pid #{pid}")
-      # In parent, detch the child.
-      Process.detach(pid)
-      pid
-    else
-      $0 = "Starting Memcached instance: #{instance.name}"
-      opt = {}
-      opt['memory'] = instance.memory
-      opt['port'] = instance.port
-      opt['password'] = instance.password
-      opt['name'] = instance.name
-      opt['maxclients'] = @max_clients
 
-      option_string = build_option_string(opt)
-      @logger.warn("#{@memcached_server_path} #{option_string}")
+    #$0 = "Starting Memcached instance: #{instance.name}"
+    opt = {}
+    opt['memory'] = instance.memory
+    opt['port'] = instance.port
+    opt['password'] = instance.password
+    opt['name'] = instance.name
+    opt['maxclients'] = @max_clients
 
-      close_fds
+    option_string = build_option_string(opt)
+    @logger.warn("#{@memcached_server_path} #{option_string}")
 
-      # create user
-      @sasl_admin.create_user(instance.user, instance.password)
+    log_dir = instance_log_dir(instance.name)
+    log_file = File.join(log_dir, "memcachded.log")
 
-      log_dir = instance_log_dir(instance.name)
-      log_file = File.join(log_dir, "memcachded.log")
+    config_command = @config_command_name
+    shutdown_command = @shutdown_command_name
+    maxclients = @max_clients
 
-      config_command = @config_command_name
-      shutdown_command = @shutdown_command_name
-      maxclients = @max_clients
+    FileUtils.mkdir_p(log_dir)
 
-      FileUtils.mkdir_p(log_dir)
-
-      exec("#{@memcached_server_path} #{option_string} > #{log_file}")
-    end
+    #cmd = "#{@memcached_server_path} #{option_string} 2&> #{log_file}"
+    cmd = "#{@memcached_server_path} #{option_string}"
+    pid = Process.spawn(cmd, :err=>"#{log_file}")
+    Process.detach(pid)
+    return pid
   rescue => e
-    p e
-    @sasl_admin.delete_user(instance.user)
     raise MemcachedError.new(MemcachedError::MEMCACHED_START_INSTANCE_FAILED, instance.inspect)
   end
 
   def stop_instance(instance)
+    @logger.debug("Stop instance: #{instance.inspect}")
     stop_memcached_server(instance)
     EM.defer do
       FileUtils.rm_rf(instance_dir(instance.name))
@@ -437,6 +445,7 @@ class VCAP::Services::Memcached::Node
     end
     begin
       destroy_instance(instance)
+      @sasl_admin.delete_user(instance.user)
     rescue => e
       err_msg << e.message
     end
@@ -452,11 +461,24 @@ class VCAP::Services::Memcached::Node
   end
 
   def stop_memcached_server(instance)
+     @logger.debug("stop process #{instance.pid}")
+
     Timeout::timeout(@memcached_timeout) do
-      @sasl_admin.delete_user(instance.user)
-      `kill #{instance.pid}`
+      Process.kill("KILL", instance.pid.to_i)
+      #cmd = "kill #{instance.pid}"
+      #o, e, s = exe_cmd(cmd)
+      #if s.exitstatus == 0
+      #  return true
+      #else
+      #  return nil
+      #end
+
+      #p o.to_s + e.to_s + s.to_s
+
     end
   rescue Timeout::Error => e
+    @logger.warn(e)
+  rescue => e
     @logger.warn(e)
   end
 
@@ -494,25 +516,6 @@ class VCAP::Services::Memcached::Node
     max
   end
 
-  def check_password(port, password)
-    Timeout::timeout(@memcached_timeout) do
-      #memcached = Dalli::Client.new({:port => port})
-      #memcached.auth(password)
-    end
-    true
-  rescue => e
-    if e.message == "ERR invalid password"
-      return false
-    else
-      raise MemcachedError.new(MemcachedError::MEMCACHED_CONNECT_INSTANCE_FAILED)
-    end
-  ensure
-    begin
-      memcached.close if memcached
-    rescue => e
-    end
-  end
-
   def get_info(instance)
     user = instance.user
     password = instance.password
@@ -540,20 +543,6 @@ class VCAP::Services::Memcached::Node
       raise MemcachedError.new(MemcachedError::MEMCACHED_NOT_YET_IMPLEMTED)
     end
     config
-  rescue => e
-    raise MemcachedError.new(MemcachedError::MEMCACHED_CONNECT_INSTANCE_FAILED)
-  ensure
-    begin
-      memcached.close if memcached
-    rescue => e
-    end
-  end
-
-  def set_config(port, password, key, value)
-    Timeout::timeout(@memcached_timeout) do
-      # FIXME: connect to dalli servier ans config support
-      raise MemcachedError.new(MemcachedError::MEMCACHED_NOT_YET_IMPLEMTED)
-    end
   rescue => e
     raise MemcachedError.new(MemcachedError::MEMCACHED_CONNECT_INSTANCE_FAILED)
   ensure

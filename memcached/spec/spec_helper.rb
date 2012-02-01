@@ -40,7 +40,6 @@ def get_hostname(credentials)
 end
 
 def get_connect_info(credentials)
-  ret = []
   hostname = get_hostname(credentials)
   username = @credentials['user']
   password = @credentials['password']
