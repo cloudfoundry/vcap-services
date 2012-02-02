@@ -580,6 +580,45 @@ describe "Postgresql node normal cases" do
     end
   end
 
+  it "should be able to share objects across users" do
+    EM.run do
+      user1 = @node.bind @db["name"], @default_opts
+      conn1 = connect_to_postgresql user1
+      conn1.query 'create table t_user1(i int)'
+      conn1.query 'create sequence s_user1'
+      conn1.query "create function f_user1() returns integer as 'select 1234;' language sql"
+      conn1.close if conn1
+
+      user2 = @node.bind @db["name"], @default_opts
+      conn2 = connect_to_postgresql user2
+      expect { conn2.query 'drop table t_user1' }.should_not raise_error
+      expect { conn2.query 'drop sequence s_user1' }.should_not raise_error
+      expect { conn2.query 'drop function f_user1()' }.should_not raise_error
+      conn2.close if conn2
+      EM.stop
+    end
+  end
+
+  it "should keep all objects created by a user even if the user is deleted" do
+    EM.run do
+      user = @node.bind @db["name"], @default_opts
+      conn = connect_to_postgresql user
+      conn.query 'create table t(i int)'
+      conn.query 'create sequence s'
+      conn.query "create function f() returns integer as 'select 1234;' language sql"
+      conn.close if conn
+      @node.unbind user
+
+      user = @node.bind @db["name"], @default_opts
+      conn = connect_to_postgresql user
+      expect { conn.query 'drop table t' }.should_not raise_error
+      expect { conn.query 'drop sequence s' }.should_not raise_error
+      expect { conn.query 'drop function f()' }.should_not raise_error
+      conn.close if conn
+      EM.stop
+    end
+  end
+
   after:each do
     @test_dbs.keys.each do |db|
       begin
