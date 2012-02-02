@@ -580,6 +580,76 @@ describe "Postgresql node normal cases" do
     end
   end
 
+  it "should be able to share objects across users" do
+    EM.run do
+      user1 = @node.bind @db["name"], @default_opts
+      conn1 = connect_to_postgresql user1
+      conn1.query 'create table t_user1(i int)'
+      conn1.query 'create sequence s_user1'
+      conn1.query "create function f_user1() returns integer as 'select 1234;' language sql"
+      conn1.close if conn1
+
+      user2 = @node.bind @db["name"], @default_opts
+      conn2 = connect_to_postgresql user2
+      expect { conn2.query 'drop table t_user1' }.should_not raise_error
+      expect { conn2.query 'drop sequence s_user1' }.should_not raise_error
+      expect { conn2.query 'drop function f_user1()' }.should_not raise_error
+      conn2.close if conn2
+      EM.stop
+    end
+  end
+
+  it "should keep all objects created by a user after the user deleted, then new user is able to access those objects" do
+    EM.run do
+      user = @node.bind @db["name"], @default_opts
+      conn = connect_to_postgresql user
+      conn.query 'create table t(i int)'
+      conn.query 'create sequence s'
+      conn.query "create function f() returns integer as 'select 1234;' language sql"
+      conn.close if conn
+      @node.unbind user
+
+      user = @node.bind @db["name"], @default_opts
+      conn = connect_to_postgresql user
+      expect { conn.query 'drop table t' }.should_not raise_error
+      expect { conn.query 'drop sequence s' }.should_not raise_error
+      expect { conn.query 'drop function f()' }.should_not raise_error
+      conn.close if conn
+      EM.stop
+    end
+  end
+
+  it "should be able to migrate(manage object owner) legacy instances" do
+    EM.run do
+      # create a regular user through node
+      user1 = @node.bind(@db['name'], @default_opts)
+      # connect to the db with sys credential to 'revoke' the user's role
+      # from parent to itself, to simulate a 'pre-r8' binding
+      @db["user"] = @opts[:postgresql]['user']
+      @db["password"] = @opts[:postgresql]['pass']
+      sys_conn = connect_to_postgresql @db
+      sys_conn.query "alter role #{user1['user']} noinherit"
+      sys_conn.query "alter role #{user1['user']} set role = #{user1['user']}"
+      sys_conn.close if sys_conn
+      # connect to the db with revoked user
+      conn1 = connect_to_postgresql user1
+      conn1.query 'create table t(i int)'
+      conn1.close if conn1
+
+      user2 = @node.bind(@db['name'], @default_opts)
+      conn2 = connect_to_postgresql user2
+      expect { conn2.query 'drop table t' }.should raise_error
+
+      # new a node class to do migration work
+      node = VCAP::Services::Postgresql::Node.new(@opts)
+      sleep 1
+      EM.add_timer(0.1) {
+        expect { conn2.query 'drop table t' }.should_not raise_error
+        EM.stop
+      }
+    end
+  end
+
   after:each do
     @test_dbs.keys.each do |db|
       begin
