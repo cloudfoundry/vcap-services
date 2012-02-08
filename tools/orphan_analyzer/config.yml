@@ -1,0 +1,16 @@
+---
+auth:
+  user: b29
+  pass: admin
+
+mbus: nats://nats:nats@172.16.122.132:4222
+
+capacity:
+  mongodb: 8192
+  redis: 8192
+  mysql: 32768
+  rabbit: 8192
+  postgresql: 32768
+
+logfile: logfile.log
+refresh: 10
