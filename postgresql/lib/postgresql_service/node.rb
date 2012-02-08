@@ -140,7 +140,7 @@ class VCAP::Services::Postgresql::Node
     # children which are not in fact children of the parent. (we don't
     # handle children that somehow have the *wrong* parent, but that
     # won't happen :-)
-    ruly_children = []
+    unruly_children = []
     query = <<-end_of_query
       SELECT rolname
       FROM pg_roles
