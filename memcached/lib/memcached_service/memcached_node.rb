@@ -247,6 +247,7 @@ class VCAP::Services::Memcached::Node
     binding_credentials_map.each do |key, value|
       binding_credentials_map[key]["credentials"] = gen_credentials(instance)
     end
+    start_instance(instance)
 
     [service_credentials, binding_credentials_map]
   rescue => e
