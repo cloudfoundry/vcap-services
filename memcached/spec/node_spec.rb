@@ -72,11 +72,11 @@ describe VCAP::Services::Memcached::Node do
       @password = 'password'
     end
 
-    it "sholud create new user" do
+    it "should create new user" do
       @admin.create_user(@create_user, @passowrd)
     end
 
-    it "sholud delete specified user" do
+    it "should delete specified user" do
       @admin.delete_user(@create_user)
     end
   end
@@ -148,7 +148,7 @@ describe VCAP::Services::Memcached::Node do
       instance = VCAP::Services::Memcached::Node::ProvisionedService.get(@instance.name)
       p instance
       instance.pid.should_not == @instance.pid
-      @node.stop_instance(@instance)
+      @node.stop_instance(instance)
       @instance.destroy
     end
   end
