@@ -30,7 +30,7 @@ class VCAP::Services::MongoDB::Provisioner < VCAP::Services::Base::Provisioner
   end
 
   def node_score(node)
-    node['available_memory']
+    node['available_capacity'] if node
   end
 
   def create_snapshot_job

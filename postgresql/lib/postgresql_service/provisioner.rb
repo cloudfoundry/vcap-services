@@ -6,7 +6,7 @@ class VCAP::Services::Postgresql::Provisioner < VCAP::Services::Base::Provisione
   include VCAP::Services::Postgresql::Common
 
   def node_score(node)
-    node['available_storage'] if node
+    node['available_capacity'] if node
   end
 
 end
