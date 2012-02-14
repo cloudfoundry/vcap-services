@@ -13,6 +13,10 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
   def initialize(options)
     super(options)
     @node_id = options[:node_id]
+    @plan = options[:plan]
+    @capacity = options[:capacity]
+    @max_capacity = @capacity
+    @capacity_lock = Mutex.new
     @migration_nfs = options[:migration_nfs]
 
     z_interval = options[:z_interval] || 30
@@ -32,40 +36,16 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
 
   def on_connect_node
     @logger.debug("#{service_description}: Connected to node mbus")
-    @node_nats.subscribe("#{service_name}.provision.#{@node_id}") { |msg, reply|
-      EM.defer { on_provision(msg, reply) }
-    }
-    @node_nats.subscribe("#{service_name}.unprovision.#{@node_id}") { |msg, reply|
-      EM.defer { on_unprovision(msg, reply) }
-    }
-    @node_nats.subscribe("#{service_name}.bind.#{@node_id}") { |msg, reply|
-      EM.defer { on_bind(msg, reply) }
-    }
-    @node_nats.subscribe("#{service_name}.unbind.#{@node_id}") { |msg, reply|
-      EM.defer { on_unbind(msg, reply) }
-    }
-    @node_nats.subscribe("#{service_name}.restore.#{@node_id}") { |msg, reply|
-      EM.defer { on_restore(msg, reply) }
-    }
-    @node_nats.subscribe("#{service_name}.discover") { |_, reply|
-      on_discover(reply)
-    }
-    # rebalance channels
-    @node_nats.subscribe("#{service_name}.disable_instance.#{@node_id}") { |msg, reply|
-      on_disable_instance(msg, reply)
-    }
-    @node_nats.subscribe("#{service_name}.enable_instance.#{@node_id}") { |msg, reply|
-      on_enable_instance(msg, reply)
-    }
-    @node_nats.subscribe("#{service_name}.import_instance.#{@node_id}") { |msg, reply|
-      on_import_instance(msg, reply)
-    }
-    @node_nats.subscribe("#{service_name}.cleanup_nfs.#{@node_id}") { |msg, reply|
-      on_cleanup_nfs(msg, reply)
-    }
-    #Orphan
-    @node_nats.subscribe("#{service_name}.check_orphan") { |msg| EM.defer { on_check_orphan(msg) } }
-    @node_nats.subscribe("#{service_name}.purge_orphan.#{@node_id}") { |msg| EM.defer { on_purge_orphan(msg) } }
+
+    %w[provision unprovision bind unbind restore disable_instance
+      enable_instance import_instance cleanup_nfs purge_orphan
+    ].each do |op|
+      eval %[@node_nats.subscribe("#{service_name}.#{op}.#{@node_id}") { |msg, reply| EM.defer{ on_#{op}(msg, reply) } }]
+    end
+    %w[discover check_orphan].each do |op|
+      eval %[@node_nats.subscribe("#{service_name}.#{op}") { |msg, reply| EM.defer{ on_#{op}(msg, reply) } }]
+    end
+
     pre_send_announcement
     send_node_announcement
     EM.add_periodic_timer(30) {
@@ -82,6 +62,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     credential = provision(plan, credentials)
     credential['node_id'] = @node_id
     response.credentials = credential
+    @capacity_lock.synchronize{ @capacity -= capacity_unit }
     @logger.debug("#{service_description}: Successfully provisioned service for request #{msg}: #{response.inspect}")
     publish(reply, encode_success(response))
   rescue => e
@@ -98,6 +79,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     result = unprovision(name, bindings)
     if result
       publish(reply, encode_success(response))
+      @capacity_lock.synchronize{ @capacity += capacity_unit }
     else
       publish(reply, encode_failure(response))
     end
@@ -195,7 +177,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
   end
 
   # Send all handles to gateway to check orphan
-  def on_check_orphan(msg)
+  def on_check_orphan(msg, reply)
     @logger.debug("#{service_description}: Request to check orphan")
     live_ins_list = all_instances_list
     live_bind_list = all_bindings_list
@@ -212,7 +194,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @logger.warn(e)
   end
 
-  def on_purge_orphan(msg)
+  def on_purge_orphan(msg, reply)
     @logger.debug("#{service_description}: Request to purge orphan" )
     request = PurgeOrphanRequest.decode(msg)
     purge_orphan(request.orphan_ins_list,request.orphan_binding_list)
@@ -274,23 +256,28 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @logger.warn(e)
   end
 
-  def on_discover(reply)
-    send_node_announcement(reply)
+  def on_discover(msg, reply)
+    send_node_announcement(msg, reply)
   end
 
   def pre_send_announcement
   end
 
-  def send_node_announcement(reply = nil)
+  def send_node_announcement(msg=nil, reply=nil)
     unless node_ready?
       @logger.debug("#{service_description}: Not ready to send announcement")
       return
     end
     @logger.debug("#{service_description}: Sending announcement for #{reply || "everyone"}")
-    a = announcement
-    a[:id] = @node_id
-    publish(reply || "#{service_name}.announce", Yajl::Encoder.encode(a))
-  rescue
+    req = nil
+    req = Yajl::Parser.parse(msg) if msg
+    if !req || req["plan"] == @plan
+      a = announcement
+      a[:id] = @node_id
+      a[:plan] = @plan
+      publish(reply || "#{service_name}.announce", Yajl::Encoder.encode(a))
+    end
+  rescue => e
     @logger.warn(e)
   end
 
@@ -314,6 +301,12 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     healthz = {
       :self => "ok"
     }
+  end
+
+  def capacity_unit
+    # subclasses could overwrite this method to re-define
+    # the capacity unit decreased/increased by provision/unprovision
+    1
   end
 
   # Helper

@@ -24,10 +24,10 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     super(options)
     @version   = options[:version]
     @node_timeout = options[:node_timeout]
-    @allow_over_provisioning = options[:allow_over_provisioning]
     @nodes     = {}
     @prov_svcs = {}
     @handles_for_check_orphan = {}
+    @plans = options[:plan_management] && options[:plan_management][:plans] || {}
     reset_orphan_stat
 
     z_interval = options[:z_interval] || 30
@@ -86,7 +86,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   end
 
   def process_nodes
-    @nodes.delete_if {|_, timestamp| Time.now.to_i - timestamp > 300}
+    @nodes.delete_if {|_, node| Time.now.to_i - node["time"] > 300}
   end
 
   def pre_send_announcement
@@ -94,24 +94,22 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
   def on_connect_node
     @logger.debug("[#{service_description}] Connected to node mbus..")
-    @node_nats.subscribe("#{service_name}.announce") { |msg|
-      on_node_announce(msg)
-    }
-    @node_nats.subscribe("#{service_name}.node_handles") { |msg| on_node_handles(msg) }
-    @node_nats.subscribe("#{service_name}.handles") {|msg, reply| on_query_handles(msg, reply) }
-    @node_nats.subscribe("#{service_name}.update_service_handle") {|msg, reply| on_update_service_handle(msg, reply) }
+    %w[announce node_handles handles update_service_handle].each do |op|
+      eval %[@node_nats.subscribe("#{service_name}.#{op}") { |msg, reply| on_#{op}(msg, reply) }]
+    end
+
     pre_send_announcement()
     @node_nats.publish("#{service_name}.discover")
   end
 
-  def on_node_announce(msg)
+  def on_announce(msg, reply=nil)
     @logger.debug("[#{service_description}] Received node announcement: #{msg}")
     announce_message = Yajl::Parser.parse(msg)
-    @nodes[announce_message["id"]] = Time.now.to_i if announce_message["id"]
+    @nodes[announce_message["id"]] = {"time" => Time.now.to_i, "plan" => announce_message["plan"]} if announce_message["id"]
   end
 
   # query all handles for a given instance
-  def on_query_handles(instance, reply)
+  def on_handles(instance, reply)
     @logger.debug("[#{service_description}] Receive query handles request for instance: #{instance}")
     if instance.empty?
       res = Yajl::Encoder.encode(@prov_svcs)
@@ -122,7 +120,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @node_nats.publish(reply, res)
   end
 
-  def on_node_handles(msg)
+  def on_node_handles(msg, reply)
     @logger.debug("[#{service_description}] Received node handles")
     response = NodeHandlesReport.decode(msg)
     nid = response.node_id
@@ -269,14 +267,21 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   def provision_service(request, prov_handle=nil, &blk)
     @logger.debug("[#{service_description}] Attempting to provision instance (request=#{request.extract})")
     subscription = nil
-    barrier = VCAP::Services::Base::Barrier.new(:timeout => BARRIER_TIMEOUT, :callbacks => @nodes.length) do |responses|
-      @logger.debug("[#{service_description}] Found the following nodes: #{responses.inspect}")
-      @node_nats.unsubscribe(subscription)
-      unless responses.empty?
-        provision_node(request, responses, prov_handle, blk)
+    plan = request.plan || "free"
+    plan_nodes = @nodes.select{ |_, node| node["plan"] == plan }
+    @logger.debug("Going to query nodes #{plan_nodes}")
+    if plan_nodes.count > 0
+      barrier = VCAP::Services::Base::Barrier.new(:timeout => BARRIER_TIMEOUT, :callbacks => plan_nodes.length) do |responses|
+        @logger.debug("[#{service_description}] Found the following nodes: #{responses.inspect}")
+        @node_nats.unsubscribe(subscription)
+        provision_node(request, responses, prov_handle, blk) unless responses.empty?
       end
+      req = Yajl::Encoder.encode({"plan" => plan})
+      subscription = @node_nats.request("#{service_name}.discover", req) {|msg| barrier.call(msg)}
+    else
+      @logger.error("Unknown plan(#{plan})")
+      blk.call(failure(ServiceError.new(ServiceError::UNKNOWN_PLAN, plan)))
     end
-    subscription = @node_nats.request("#{service_name}.discover") {|msg| barrier.call(msg)}
   rescue => e
     @logger.warn(e)
     blk.call(internal_fail)
@@ -284,13 +289,16 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
   def provision_node(request, node_msgs, prov_handle, blk)
     @logger.debug("[#{service_description}] Provisioning node (request=#{request.extract}, nnodes=#{node_msgs.length})")
+    plan = request.plan
     nodes = node_msgs.map { |msg| Yajl::Parser.parse(msg.first) }
+    allow_over_provisioning = @plans[plan.to_sym] && @plans[plan.to_sym][:allow_over_provisioning] || false
+    @logger.debug("Pick best node from:  #{nodes}")
     best_node = nodes.max_by { |node| node_score(node) }
-    if best_node && ( @allow_over_provisioning || node_score(best_node) > 0 )
+    if best_node && ( allow_over_provisioning || node_score(best_node) > 0 )
       best_node = best_node["id"]
       @logger.debug("[#{service_description}] Provisioning on #{best_node}")
       prov_req = ProvisionRequest.new
-      prov_req.plan = request.plan
+      prov_req.plan = plan
       # use old credentials to provision a service if provided.
       prov_req.credentials = prov_handle["credentials"] if prov_handle
       subscription = nil
@@ -721,11 +729,17 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       end
     end
 
+    plans = []
+    @plans.each do |k,v|
+      plans << {:plan => k, :low_water => v[:low_water], :high_water => v[:high_water]}
+    end
+
     varz = {
       :nodes => @nodes,
       :prov_svcs => svcs,
       :orphan_instances => orphan_instances,
-      :orphan_bindings => orphan_bindings
+      :orphan_bindings => orphan_bindings,
+      :plans => plans
     }
     return varz
   rescue => e
