@@ -1,0 +1,107 @@
+# Copyright (c) 2009-2011 VMware, Inc.
+require "rest_client"
+require "json"
+
+module VCAP
+  module Services
+    module Rabbit
+      module Util
+
+        @cli = RestClient::Resource.new(@admin_url, :timeout => @rabbit_timeout)
+
+        def add_vhost(vhost)
+          RestClient.put "#{@admin_url}/vhosts/#{vhost}", nil, :content_type => "application/json"
+        rescue => e
+          @logger.warn(e)
+          raise RabbitError.new(RabbitError::RABBIT_ADD_VHOST_FAILED, vhost)
+        end
+
+        def delete_vhost(vhost)
+          RestClient.delete "#{@admin_url}/vhosts/#{vhost}"
+        rescue => e
+          @logger.warn(e)
+          raise RabbitError.new(RabbitError::RABBIT_DELETE_VHOST_FAILED, vhost)
+        end
+
+        def add_user(username, password)
+          RestClient.put "#{@admin_url}/users/#{username}", "{\"password\":\"#{password}\", \"tags\":\"administrator\"}", :content_type => "application/json"
+
+        rescue => e
+          @logger.warn(e)
+          raise RabbitError.new(RabbitError::RABBIT_ADD_USER_FAILED, username)
+        end
+
+        def delete_user(username)
+          RestClient.delete "#{@admin_url}/users/#{username}"
+        rescue => e
+          @logger.warn(e)
+          raise RabbitError.new(RabbitError::RABBIT_DELETE_USER_FAILED, username)
+        end
+
+        def get_permissions_by_options(binding_options)
+          # FIXME: binding options is not implemented, use the full permissions.
+          @default_permissions
+        end
+
+        def get_permissions(vhost, username)
+          response = RestClient.get "#{@admin_url}/permissions/#{vhost}/#{username}"
+          JSON.parse(response)
+        rescue => e
+          @logger.warn(e)
+          raise RabbitError.new(RabbitError::RABBIT_GET_PERMISSIONS_FAILED, username)
+        end
+
+        def set_permissions(vhost, username, permissions)
+          RestClient.put "#{@admin_url}/permissions/#{vhost}/#{username}", permissions, :content_type => "application/json"
+        rescue => e
+          @logger.warn(e)
+          raise RabbitError.new(RabbitError::RABBIT_SET_PERMISSIONS_FAILED, username, permissions)
+        end
+
+        def clear_permissions(vhost, username)
+          RestClient.delete "#{@admin_url}/permissions/#{vhost}/#{username}"
+        rescue => e
+          @logger.warn(e)
+          raise RabbitError.new(RabbitError::RABBIT_CLEAR_PERMISSIONS_FAILED, username)
+        end
+
+        def get_vhost_permissions(vhost)
+          response = RestClient.get "#{@admin_url}/vhosts/#{vhost}/permissions"
+          JSON.parse(response)
+        rescue => e
+          @logger.warn(e)
+          raise RabbitError.new(RabbitError::RABBIT_GET_VHOST_PERMISSIONS_FAILED, vhost)
+        end
+
+        def list_users
+          RestClient.get "#{@admin_url}/users"
+        rescue => e
+          @logger.warn(e)
+          raise RabbitError.new(RabbitError::RABBIT_LIST_USERS_FAILED)
+        end
+
+        def list_queues(vhost)
+          RestClient.get "#{@admin_url}/queues"
+        rescue => e
+          @logger.warn(e)
+          raise RabbitError.new(RabbitError::RABBIT_LIST_QUEUES, vhost)
+        end
+
+        def list_exchanges(vhost)
+          RestClient.get "#{@admin_url}/exchanges"
+        rescue => e
+          @logger.warn(e)
+          raise RabbitError.new(RabbitError::RABBIT_LIST_EXCHANGES_FAILED, vhost)
+        end
+
+        def list_bindings(vhost)
+          RestClient.get "#{@admin_url}/bindings"
+        rescue => e
+          @logger.warn(e)
+          raise RabbitError.new(RabbitError::RABBIT_LIST_BINDINGS_FAILED, vhost)
+        end
+
+      end
+    end
+  end
+end
