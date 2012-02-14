@@ -1,9 +1,6 @@
 ---
 local_db: sqlite3:/var/vcap/services/rabbit/rabbit_node.db
 base_dir: /var/vcap/services/rabbit/
-rabbit_ctl: rabbitmqctl
-rabbit_server: rabbitmq-server
-rabbit_port: 5672
 mbus: nats://localhost:4222
 index: 0
 logging:
@@ -14,4 +11,13 @@ max_memory: 16
 node_id: rabbit_node_1
 pid: /var/vcap/sys/run/rabbit_node.pid
 migration_nfs: /mnt/appcloud
+max_clients: 500
+port_range:
+  first: 10001
+  last: 20000
+admin_port_range:
+  first: 20001
+  last: 30000
+rabbitmq_server: rabbitmq-server
+rabbitmq_log_dir: /var/vcap/sys/log/redis
 # z_interval: 30
