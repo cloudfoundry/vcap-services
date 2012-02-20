@@ -582,6 +582,7 @@ describe "Mysql server node" do
     end
   end
 
+  # NOTE: This test case should fail. It is a known issue.
   it "should report correct health status when user modify instance password" do
     EM.run do
       conn = connect_to_mysql(@db)
@@ -599,7 +600,7 @@ describe "Mysql server node" do
         res = connection.query("show processlist")
         conns_before_healthz = res.count
         healthz = @node.healthz_details()
-        healthz.keys.size.should >= 2
+        healthz.keys.size.should == 1
         res = connection.query("show processlist")
         conns_after_healthz = res.count
         conns_before_healthz.should == conns_after_healthz
@@ -608,15 +609,23 @@ describe "Mysql server node" do
     end
   end
 
-  it "should report instance status in healthz" do
+  it "should report instance status in varz" do
     EM.run do
-      healthz = @node.healthz_details()
+      varz = @node.varz_details()
       instance = @db['name']
-      healthz[instance.to_sym].should == "ok"
+      varz[:provisioned_services].each do |service_instance|
+        if (service_instance[:instance_name] == instance.to_sym)
+          service_instance[:instance_status].should == "ok"
+        end
+      end
       @node.pool.with_connection do |connection|
         connection.query("Drop database #{instance}")
-        healthz = @node.healthz_details()
-        healthz[instance.to_sym].should == "fail"
+        varz = @node.varz_details()
+        varz[:provisioned_services].each do |service_instance|
+          if (service_instance[:instance_name] == instance.to_sym)
+            service_instance[:instance_status].should == "fail"
+          end
+        end
         # restore db so cleanup code doesn't complain.
         connection.query("create database #{instance}")
       end

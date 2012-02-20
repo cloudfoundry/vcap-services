@@ -32,7 +32,8 @@ describe VCAP::Services::Redis::Node do
       :config_template => File.expand_path("../resources/redis.conf.erb", File.dirname(__FILE__)),
       :local_db => "sqlite3:" + @local_db_file,
       :port_range => Range.new(5000, 25000),
-      :mbus => "nats://localhost:4222",
+      #:mbus => "nats://localhost:4222",
+      :mbus => "nats://nats:nats@192.168.245.128:4222/",
       :redis_log_dir => "/tmp/redis_log",
       :command_rename_prefix => "protect-command",
       :max_clients => 100
