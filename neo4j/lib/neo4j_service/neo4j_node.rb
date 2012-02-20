@@ -160,10 +160,31 @@ class VCAP::Services::Neo4j::Node
   end
 
   def announcement
+    # Get service instance status
+    provisioned_services = []
+    begin
+      ProvisionedService.all.each do |instance|
+        instance_status = {}
+        instance_status[:instance_name] = instance.name.to_sym
+        instance_status[:instance_status] = get_instance_healthz(instance)
+        provisioned_services.push(instance_status)
+      end
+    rescue => e
+      @logger.error("Error get instance list: #{e}")
+    end
+
     a = {
-      :available_memory => @available_memory
+      :available_memory => @available_memory,
+      :provisioned_services => provisioned_services
     }
+
     a
+  end
+
+  def get_instance_healthz(instance)
+    #FIXME: stub handler, need sophisticated implementation
+    res = "ok"
+    res
   end
 
   def provision(plan, credentials=nil)

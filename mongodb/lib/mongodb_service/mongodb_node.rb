@@ -504,11 +504,26 @@ class VCAP::Services::MongoDB::Node
       stat['name'] = provisioned_service.name
       stats << stat
     end
+
+    # Get service instance status
+    provisioned_services = []
+    begin
+      ProvisionedService.all.each do |instance|
+        instance_status = {}
+        instance_status[:instance_name] = instance.name.to_sym
+        instance_status[:instance_status] = get_healthz(instance)
+        provisioned_services.push(instance_status)
+      end
+    rescue => e
+      @logger.error("Error get instance list: #{e}")
+    end
+
     {
       :running_services     => stats,
       :disk                 => du_hash,
       :services_max_memory  => @total_memory,
-      :services_used_memory => @total_memory - @available_memory
+      :services_used_memory => @total_memory - @available_memory,
+      :provisioned_services => provisioned_services
     }
   end
 
@@ -516,12 +531,12 @@ class VCAP::Services::MongoDB::Node
     healthz = {}
     healthz[:self] = "ok"
     ProvisionedService.all.each do |instance|
-      healthz[instance.name.to_sym] = get_healthz(instance)
+      get_healthz(instance)
     end
     healthz
   rescue => e
     @logger.warn("Error get healthz details: #{e}")
-    {:self => "fail"}
+    {:self => "fail", :message => "#{e}"}
   end
 
   def connect_and_auth(instance)

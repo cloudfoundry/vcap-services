@@ -465,7 +465,7 @@ describe "Postgresql node normal cases" do
       self_db.should_not be_nil
 
       healthz = @node.healthz_details()
-      healthz.keys.size.should >= 2
+      healthz.keys.size.should == 1
 
       sleep 0.1
       varz = @node.varz_details
@@ -481,15 +481,23 @@ describe "Postgresql node normal cases" do
     end
   end
 
-  it "should report instance status in healthz" do
+  it "should report instance status in varz" do
     EM.run do
-      healthz = @node.healthz_details()
+      varz = @node.varz_details()
       instance = @db['name']
-      healthz[instance.to_sym].should == "ok"
+      varz[:provisioned_services].each do |service_instance|
+        if (service_instance[:instance_name] == instance.to_sym)
+          service_instance[:instance_status].should == "ok"
+        end
+      end
       conn = @node.connection
       conn.query("drop database #{instance}")
-      healthz = @node.healthz_details()
-      healthz[instance.to_sym].should == "fail"
+      varz = @node.varz_details()
+      varz[:provisioned_services].each do |service_instance|
+        if (service_instance[:instance_name] == instance.to_sym)
+          service_instance[:instance_status].should == "fail"
+        end
+      end
       # restore db so cleanup code doesn't complain.
       conn.query("create database #{instance}")
       EM.stop

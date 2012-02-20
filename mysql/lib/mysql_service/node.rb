@@ -567,6 +567,18 @@ class VCAP::Services::Mysql::Node
       varz[:provision_served] = @provision_served
       varz[:binding_served] = @binding_served
     end
+    # provisioned services status
+    varz[:provisioned_services] = []
+    begin
+      ProvisionedService.all.each do |instance|
+        instance_status = {}
+        instance_status[:instance_name] = instance.name.to_sym
+        instance_status[:instance_status] = get_instance_healthz(instance)
+        varz[:provisioned_services].push(instance_status)
+      end
+    rescue => e
+      @logger.error("Error get instance list: #{e}")
+    end
     varz
   rescue => e
     @logger.error("Error during generate varz: #{e}")
@@ -582,15 +594,8 @@ class VCAP::Services::Mysql::Node
     rescue => e
       @logger.error("Error get database list: #{e}")
       healthz[:self] = "fail"
+      healthz[:message] = "#{e}"
       return healthz
-    end
-    begin
-      ProvisionedService.all.each do |instance|
-        healthz[instance.name.to_sym] = get_instance_healthz(instance)
-      end
-    rescue => e
-      @logger.error("Error get instance list: #{e}")
-      healthz[:self] = "fail"
     end
     healthz
   end

@@ -250,9 +250,13 @@ class VCAP::Services::Redis::Node
     @available_memory_mutex.synchronize do
       varz[:max_instances_num] = @options[:available_memory] / @max_memory
     end
-    ProvisionedService.all.each do |instance|
-      varz[:provisioned_instances] << get_varz(instance)
-      varz[:provisioned_instances_num] += 1
+    begin
+      ProvisionedService.all.each do |instance|
+        varz[:provisioned_instances] << get_varz(instance)
+        varz[:provisioned_instances_num] += 1
+      end
+    rescue => e
+      @logger.error("Error get instance list: #{e}")
     end
     varz
   rescue => e
@@ -264,12 +268,12 @@ class VCAP::Services::Redis::Node
     healthz = {}
     healthz[:self] = "ok"
     ProvisionedService.all.each do |instance|
-      healthz[instance.name.to_sym] = get_healthz(instance)
+      get_healthz(instance)
     end
     healthz
   rescue => e
     @logger.warn("Error while getting healthz details: #{e}")
-    {:self => "fail"}
+    {:self => "fail", ":message" => "#{e}"}
   end
 
   def start_db
@@ -407,6 +411,7 @@ class VCAP::Services::Redis::Node
     varz[:name] = instance.name
     varz[:port] = instance.port
     varz[:plan] = instance.plan
+    varz[:instance_status] = get_healthz(instance)
     varz[:usage] = {}
     varz[:usage][:max_memory] = instance.memory.to_f * 1024.0
     varz[:usage][:used_memory] = info["used_memory"].to_f / (1024.0 * 1024.0)
