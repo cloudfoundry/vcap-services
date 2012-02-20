@@ -159,11 +159,46 @@ class VCAP::Services::Neo4j::Node
     service.kill(:SIGTERM) if service.running?
   end
 
+  def varz_details
+    varz = {}
+    # Get service instance status
+    provisioned_instances = []
+    begin
+      ProvisionedService.all.each do |instance|
+        instance_status = {}
+        instance_status[:name] = instance.name.to_sym
+        instance_status[:status] = get_status(instance)
+        provisioned_instances.push(instance_status)
+      end
+    rescue => e
+      @logger.error("Error get instance list: #{e}")
+    end
+    
+    varz = {
+      :available_memory => @available_memory,
+      :instances        => provisioned_instances
+    }
+    
+    varz
+  end
+
   def announcement
     a = {
       :available_memory => @available_memory
     }
+
     a
+  end
+
+  def healthz_details
+    healthz = "ok"
+    healthz
+  end
+
+  def get_status(instance)
+    #FIXME: stub handler, need sophisticated implementation
+    res = "ok"
+    res
   end
 
   def provision(plan, credentials=nil)

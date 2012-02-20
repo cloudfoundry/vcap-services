@@ -800,6 +800,18 @@ class VCAP::Services::Postgresql::Node
     # how many provision/binding operations since startup.
     varz[:provision_served] = @provision_served
     varz[:binding_served] = @binding_served
+    # get instances status
+    varz[:instances] = []
+    begin
+      Provisionedservice.all.each do |instance|
+        instance_status = {}
+        instance_status[:name] = instance.name.to_sym
+        instance_status[:status] = get_status(instance)
+        varz[:instances].push(instance_status)
+      end
+    rescue => e
+      @logger.error("Error get instance list: #{e}")
+    end
     varz
   rescue => e
     @logger.warn("Error during generate varz: #{e}")
@@ -834,24 +846,35 @@ class VCAP::Services::Postgresql::Node
   end
 
   def healthz_details()
-    healthz = {:self => "ok"}
+    healthz = "ok"
     if connection_exception
-      @logger.warn("PostgreSQL connection lost, healthz fail.")
-      healthz[:self] = "fail"
+      message = "PostgreSQL connection lost, healthz fail."
+      @logger.warn(message)
+      healthz = "fail: #{message}"
       return healthz
     end
     begin
       Provisionedservice.all.each do |instance|
-        healthz[instance.name.to_sym] = get_instance_healthz(instance)
+        get_status(instance)
       end
     rescue => e
-      @logger.error("Error get instance list: #{e}")
-      healthz[:self] = "fail"
+      @logger.error("Error get healthz details: #{e}")
+      
+      # NOTE: In production site, we have some instances that are not working
+      # due to old bugs or some unknown bugs. So we definitely do not want
+      # to fail in such case.
+
+      # NOTE: Here we use "stale" to indicate that there may be some wrong with
+      # some instance, however, we need double check this instance. If some
+      # instance's status is "stale", some additional periodical probe mechanism
+      # should be involved. The exception message shall be a hint to solve the
+      # problem.
+      healthz = "stale: #{e}"
     end
     healthz
   end
 
-  def get_instance_healthz(instance)
+  def get_status(instance)
     res = 'ok'
     host, port = %w{host port}.map { |opt| @postgresql_config[opt] }
     begin
