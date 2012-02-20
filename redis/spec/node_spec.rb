@@ -301,9 +301,9 @@ describe VCAP::Services::Redis::Node do
       sleep 1
       varz = @node.varz_details
       varz[:provisioned_instances_num].should == 1
-      varz[:provisioned_instances][0][:name].should == @credentials["name"]
-      varz[:provisioned_instances][0][:port].should == @credentials["port"]
-      varz[:provisioned_instances][0][:plan].should == "free"
+      varz[:instances][0][:name].should == @credentials["name"]
+      varz[:instances][0][:port].should == @credentials["port"]
+      varz[:instances][0][:plan].should == "free"
       @node.unprovision(@credentials["name"])
     end
   end
@@ -313,8 +313,7 @@ describe VCAP::Services::Redis::Node do
       @credentials = @node.provision(:free)
       sleep 1
       healthz = @node.healthz_details
-      healthz[:self].should == "ok"
-      healthz[@credentials["name"].to_sym].should == "ok"
+      healthz.should == "ok"
       @node.unprovision(@credentials["name"])
     end
   end

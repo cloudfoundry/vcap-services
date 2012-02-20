@@ -242,11 +242,15 @@ class VCAP::Services::Redis::Node
     varz = {}
     varz[:max_capacity] = @max_capacity
     varz[:available_capacity] = @capacity
-    varz[:provisioned_instances] = []
+    varz[:instances] = []
     varz[:provisioned_instances_num] = 0
-    ProvisionedService.all.each do |instance|
-      varz[:provisioned_instances] << get_varz(instance)
-      varz[:provisioned_instances_num] += 1
+    begin
+      ProvisionedService.all.each do |instance|
+        varz[:instances] << get_varz(instance)
+        varz[:provisioned_instances_num] += 1
+      end
+    rescue => e
+      @logger.error("Error get instance list: #{e}")
     end
     varz
   rescue => e
@@ -255,15 +259,24 @@ class VCAP::Services::Redis::Node
   end
 
   def healthz_details
-    healthz = {}
-    healthz[:self] = "ok"
+    healthz = "ok"
     ProvisionedService.all.each do |instance|
-      healthz[instance.name.to_sym] = get_healthz(instance)
+      get_status(instance)
     end
     healthz
   rescue => e
     @logger.warn("Error while getting healthz details: #{e}")
-    {:self => "fail"}
+    
+    # NOTE: In production site, we have some instances that are not working
+    # due to old bugs or some unknown bugs. So we definitely do not want
+    # to fail in such case.
+
+    # NOTE: Here we use "stale" to indicate that there may be some wrong with
+    # some instance, however, we need double check this instance. If some
+    # instance's status is "stale", some additional periodical probe mechanism
+    # should be involved. The exception message shall be a hint to solve the
+    # problem.
+    "stale: #{e}"
   end
 
   def start_db
@@ -395,6 +408,7 @@ class VCAP::Services::Redis::Node
     varz[:name] = instance.name
     varz[:port] = instance.port
     varz[:plan] = @plan
+    varz[:status] = get_status(instance)
     varz[:usage] = {}
     varz[:usage][:max_memory] = instance.memory.to_f * 1024.0
     varz[:usage][:used_memory] = info["used_memory"].to_f / (1024.0 * 1024.0)
@@ -417,7 +431,7 @@ class VCAP::Services::Redis::Node
     }
   end
 
-  def get_healthz(instance)
+  def get_status(instance)
     Timeout::timeout(@redis_timeout) do
       redis = Redis.new({:port => instance.port, :password => instance.password})
       redis.echo("")

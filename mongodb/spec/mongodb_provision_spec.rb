@@ -62,16 +62,16 @@ describe "mongodb_node provision" do
       stats[:disk].should_not be_nil
       stats[:max_capacity].should > 0
       stats[:available_capacity].should > 0
+      stats[:instances].length.should > 0
       EM.stop
     end
   end
 
   it "should return healthz" do
     EM.run do
-      stats = @node.healthz_details
-      stats.should_not be_nil
-      stats[:self].should == "ok"
-      stats[@resp['name'].to_sym].should == "ok"
+      healthz = @node.healthz_details
+      healthz.should_not be_nil
+      healthz.should == "ok"
       EM.stop
     end
   end
@@ -88,6 +88,7 @@ describe "mongodb_node provision" do
     end
   end
 
+  # NOTE: This test case should fail. It is a known issue.
   it "should enforce no more than max connection to be accepted" do
     first_conn_refused = false
     max_conn_refused = false
