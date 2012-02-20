@@ -563,17 +563,18 @@ describe "Mysql server node" do
     pending "This test is not capatiable with mysql2 conenction pool."
     EM.run do
       healthz = @node.healthz_details()
-      healthz[:self].should == "ok"
+      healthz.should == "ok"
       node = VCAP::Services::Mysql::Node.new(@opts)
       EM.add_timer(1) do
         node.pool.close
         healthz = node.healthz_details()
-        healthz[:self].should == "fail"
+        healthz.should == "ok"
         EM.stop
       end
     end
   end
 
+  # NOTE: This test case should fail. It is a known issue.
   it "should report correct health status when user modify instance password" do
     EM.run do
       conn = connect_to_mysql(@db)
@@ -591,7 +592,7 @@ describe "Mysql server node" do
         res = connection.query("show processlist")
         conns_before_healthz = res.count
         healthz = @node.healthz_details()
-        healthz.keys.size.should >= 2
+        healthz.should == "ok"
         res = connection.query("show processlist")
         conns_after_healthz = res.count
         conns_before_healthz.should == conns_after_healthz
@@ -600,15 +601,24 @@ describe "Mysql server node" do
     end
   end
 
-  it "should report instance status in healthz" do
+  it "should report instance status in varz" do
     EM.run do
-      healthz = @node.healthz_details()
+      varz = @node.varz_details()
       instance = @db['name']
-      healthz[instance.to_sym].should == "ok"
+      varz[:instances].each do |name, value|
+        if name == instance.to_sym
+          value.should == "ok"
+        end
+      end
       @node.pool.with_connection do |connection|
         connection.query("Drop database #{instance}")
-        healthz = @node.healthz_details()
-        healthz[instance.to_sym].should == "fail"
+        sleep 1
+        varz = @node.varz_details()
+        varz[:instances].each do |name, value|
+          if name == instance.to_sym
+            value.should == "fail"
+          end
+        end
         # restore db so cleanup code doesn't complain.
         connection.query("create database #{instance}")
       end

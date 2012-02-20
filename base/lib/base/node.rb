@@ -298,9 +298,9 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
   def healthz_details()
     # Service Node subclasses may want to override this method to
     # provide service specific data
-    healthz = {
-      :self => "ok"
-    }
+
+    # Ship healthz data through varz
+    healthz = "ok"
   end
 
   def capacity_unit

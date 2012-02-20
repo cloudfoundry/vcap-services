@@ -313,8 +313,7 @@ describe VCAP::Services::Redis::Node do
       @credentials = @node.provision(:free)
       sleep 1
       healthz = @node.healthz_details
-      healthz[:self].should == "ok"
-      healthz[@credentials["name"].to_sym].should == "ok"
+      healthz.should == "ok"
       @node.unprovision(@credentials["name"])
     end
   end
