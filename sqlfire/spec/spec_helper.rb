@@ -91,7 +91,7 @@ end
 def sqlfire_url(user=@bind_resp['username'],password=@bind_resp['password'],port=@resp['port'])
   auth = ""
   auth = "#{user}:#{password}@" if user
-  "http://#{auth}localhost:#{port}/db/data/"
+  "http://#{auth}#{@bind_resp[host]}:#{port}/db/data/"
 end
 
 def sqlfire_connect(user=@bind_resp['username'],password=@bind_resp['password'],port=@resp['port'])

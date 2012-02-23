@@ -342,7 +342,7 @@ class VCAP::Services::Sqlfire::Node
     response = {
       "user"     => provisioned_service.user,
       "password" => provisioned_service.password,
-      "hostname" => @local_ip,
+      "host"     => @local_ip,
       "port"     => provisioned_service.netserver_port,
       "locator_port" => provisioned_service.locator_port,
       "name"     => provisioned_service.name,

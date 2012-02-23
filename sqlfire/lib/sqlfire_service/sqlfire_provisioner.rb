@@ -1,6 +1,7 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 require "base/provisioner"
 require "sqlfire_service/common"
+require "sqlfire_service/sqlfire_error"
 require "uuidtools"
 
 class VCAP::Services::Sqlfire::Provisioner < VCAP::Services::Base::Provisioner
@@ -8,6 +9,11 @@ class VCAP::Services::Sqlfire::Provisioner < VCAP::Services::Base::Provisioner
   VALID_CREDENTIAL_CHARACTERS = ("A".."Z").to_a + ("a".."z").to_a + ("0".."9").to_a
 
   include VCAP::Services::Sqlfire::Common
+
+#  def initialize(opts)
+#    super(opts)
+#    @opts = opts
+#  end
 
   def node_score(node)
     node['available_memory']
@@ -40,6 +46,10 @@ class VCAP::Services::Sqlfire::Provisioner < VCAP::Services::Base::Provisioner
     want_nodes = @service[:plan_mapping][plan.to_sym] || 1
 
     nodes = node_msgs.map { |msg| Yajl::Parser.parse(msg.first) }
+    if want_nodes > nodes.size
+      raise ServiceError.new(VCAP::Services::Sqlfire::SqlfireError::SQLFIRE_INSUFFICIENT_NODES_ERROR, want_nodes, nodes.size, plan)
+    end
+
     sorted_nodes = nodes.sort_by { |node| -(node_score(node)) }
 
     # We may get back less than we actually have - that's OK
@@ -131,6 +141,14 @@ class VCAP::Services::Sqlfire::Provisioner < VCAP::Services::Base::Provisioner
           blk.call(wrap_error(response))
         end
       end
+  rescue => e
+    if e.instance_of? ServiceError
+      @logger.debug(e)
+      blk.call(failure(e))
+    else
+      @logger.warn(e)
+      blk.call(internal_fail)
+    end
   end
 
 

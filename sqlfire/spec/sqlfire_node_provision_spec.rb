@@ -37,7 +37,7 @@ describe VCAP::Services::Sqlfire::Node do
     EM.run do
       EM.add_timer(1) { EM.stop }
       begin
-#        @node.unprovision(@resp["name"], nil)
+        @node.unprovision(@resp["name"], nil)
         EM.stop
       rescue
       end

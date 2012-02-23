@@ -55,7 +55,7 @@ describe VCAP::Services::Sqlfire::Node do
   end
 
   it "should be able to connect to sqlfire" do
-    is_port_open?('127.0.0.1', @resp['port']).should be_true
+    is_port_open?(@resp['host'], @resp['port']).should be_true
   end
 
   # unbind here
@@ -75,7 +75,7 @@ describe VCAP::Services::Sqlfire::Node do
 
       e = nil
       begin
-        sqlfire_connect(nil,nil)
+        sqlfire_connect(@resp['username'], @resp['password'], @resp['port'])
       rescue => e
       end
       e.should_not be_nil
