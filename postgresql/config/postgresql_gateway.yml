@@ -11,10 +11,10 @@ ip_route: localhost
 #   host: proxy
 #   port: 8080
 #   keepalive: true
-token: "0xdeadbeef"
+token: changeme
 logging:
   level: debug
-mbus: nats://localhost:4222
+mbus: nats://nats:nats@192.168.245.128:4222/
 pid: /var/vcap/sys/run/postgresql_service.pid
 node_timeout: 2
 plan_management:

@@ -500,13 +500,13 @@ class VCAP::Services::MongoDB::Node
     end
 
     # Get service instance status
-    provisioned_services = []
+    provisioned_instances = []
     begin
       ProvisionedService.all.each do |instance|
         instance_status = {}
-        instance_status[:instance_name] = instance.name.to_sym
-        instance_status[:instance_status] = get_healthz(instance)
-        provisioned_services.push(instance_status)
+        instance_status[:name] = instance.name.to_sym
+        instance_status[:status] = get_status(instance)
+        provisioned_instances.push(instance_status)
       end
     rescue => e
       @logger.error("Error get instance list: #{e}")
@@ -517,20 +517,29 @@ class VCAP::Services::MongoDB::Node
       :disk                 => du_hash,
       :max_capacity         => @max_capacity,
       :available_capacity   => @capacity,
-      :provisioned_services => provisioned_services
+      :instances            => provisioned_instances
     }
   end
 
   def healthz_details
-    healthz = {}
-    healthz[:self] = "ok"
+    healthz = "ok"
     ProvisionedService.all.each do |instance|
-      get_healthz(instance)
+      get_status(instance)
     end
     healthz
   rescue => e
     @logger.warn("Error get healthz details: #{e}")
-    {:self => "fail", :message => "#{e}"}
+    
+    # NOTE: In production site, we have some instances that are not working 
+    # due to old bugs or some unknown bugs. So we definitely do not want 
+    # to fail in such case.
+
+    # NOTE: Here we use "stale" to indicate that there may be some wrong with
+    # some instance, however, we need double check this instance. If some 
+    # instance's status is "stale", some additional periodical probe mechanism
+    # should be involved. The exception message shall be a hint to solve the
+    # problem.
+    "stale: #{e}"
   end
 
   def connect_and_auth(instance)
@@ -558,7 +567,7 @@ class VCAP::Services::MongoDB::Node
     end
   end
 
-  def get_healthz(instance)
+  def get_status(instance)
     conn = connect_and_auth(instance)
     "ok"
   rescue => e

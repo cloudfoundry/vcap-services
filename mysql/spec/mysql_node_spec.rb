@@ -563,12 +563,12 @@ describe "Mysql server node" do
     pending "This test is not capatiable with mysql2 conenction pool."
     EM.run do
       healthz = @node.healthz_details()
-      healthz[:self].should == "ok"
+      healthz.should == "ok"
       node = VCAP::Services::Mysql::Node.new(@opts)
       EM.add_timer(1) do
         node.pool.close
         healthz = node.healthz_details()
-        healthz[:self].should == "fail"
+        healthz.split("\:")[0].should == "fail"
         EM.stop
       end
     end
@@ -592,7 +592,7 @@ describe "Mysql server node" do
         res = connection.query("show processlist")
         conns_before_healthz = res.count
         healthz = @node.healthz_details()
-        healthz.keys.size.should == 1
+        healthz.should == "ok"
         res = connection.query("show processlist")
         conns_after_healthz = res.count
         conns_before_healthz.should == conns_after_healthz
@@ -605,17 +605,17 @@ describe "Mysql server node" do
     EM.run do
       varz = @node.varz_details()
       instance = @db['name']
-      varz[:provisioned_services].each do |service_instance|
-        if (service_instance[:instance_name] == instance.to_sym)
-          service_instance[:instance_status].should == "ok"
+      varz[:instances].each do |service_instance|
+        if (service_instance[:name] == instance.to_sym)
+          service_instance[:status].should == "ok"
         end
       end
       @node.pool.with_connection do |connection|
         connection.query("Drop database #{instance}")
         varz = @node.varz_details()
-        varz[:provisioned_services].each do |service_instance|
-          if (service_instance[:instance_name] == instance.to_sym)
-            service_instance[:instance_status].should == "fail"
+        varz[:instances].each do |service_instance|
+          if (service_instance[:name] == instance.to_sym)
+            service_instance[:status].should == "fail"
           end
         end
         # restore db so cleanup code doesn't complain.

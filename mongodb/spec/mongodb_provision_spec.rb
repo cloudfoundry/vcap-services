@@ -62,16 +62,16 @@ describe "mongodb_node provision" do
       stats[:disk].should_not be_nil
       stats[:max_capacity].should > 0
       stats[:available_capacity].should > 0
-      stats[:provisioned_services].length.should > 0
+      stats[:instances].length.should > 0
       EM.stop
     end
   end
 
   it "should return healthz" do
     EM.run do
-      stats = @node.healthz_details
-      stats.should_not be_nil
-      stats[:self].should == "ok"
+      healthz = @node.healthz_details
+      healthz.should_not be_nil
+      healthz.should == "ok"
       EM.stop
     end
   end

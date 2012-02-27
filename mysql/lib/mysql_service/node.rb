@@ -543,13 +543,13 @@ class VCAP::Services::Mysql::Node
       varz[:binding_served] = @binding_served
     end
     # provisioned services status
-    varz[:provisioned_services] = []
+    varz[:instances] = []
     begin
       ProvisionedService.all.each do |instance|
         instance_status = {}
-        instance_status[:instance_name] = instance.name.to_sym
-        instance_status[:instance_status] = get_instance_healthz(instance)
-        varz[:provisioned_services].push(instance_status)
+        instance_status[:name] = instance.name.to_sym
+        instance_status[:status] = get_status(instance)
+        varz[:instances].push(instance_status)
       end
     rescue => e
       @logger.error("Error get instance list: #{e}")
@@ -561,21 +561,19 @@ class VCAP::Services::Mysql::Node
   end
 
   def healthz_details()
-    healthz = {:self => "ok"}
+    healthz = "ok"
     begin
       @pool.with_connection do |connection|
         connection.query("SHOW DATABASES")
       end
     rescue => e
       @logger.error("Error get database list: #{e}")
-      healthz[:self] = "fail"
-      healthz[:message] = "#{e}"
-      return healthz
+      healthz = "fail: #{e}"
     end
     healthz
   end
 
-  def get_instance_healthz(instance)
+  def get_status(instance)
     res = "ok"
     host, port, socket, root_user, root_pass = %w{host port socket user pass}.map { |opt| @mysql_config[opt] }
     begin

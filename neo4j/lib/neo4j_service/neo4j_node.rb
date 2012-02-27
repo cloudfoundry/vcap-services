@@ -159,29 +159,43 @@ class VCAP::Services::Neo4j::Node
     service.kill(:SIGTERM) if service.running?
   end
 
-  def announcement
+  def varz_details
+    varz = {}
     # Get service instance status
-    provisioned_services = []
+    provisioned_instances = []
     begin
       ProvisionedService.all.each do |instance|
         instance_status = {}
-        instance_status[:instance_name] = instance.name.to_sym
-        instance_status[:instance_status] = get_instance_healthz(instance)
-        provisioned_services.push(instance_status)
+        instance_status[:name] = instance.name.to_sym
+        instance_status[:status] = get_status(instance)
+        provisioned_instances.push(instance_status)
       end
     rescue => e
       @logger.error("Error get instance list: #{e}")
     end
-
-    a = {
+    
+    varz = {
       :available_memory => @available_memory,
-      :provisioned_services => provisioned_services
+      :instances        => provisioned_instances
+    }
+    
+    varz
+  end
+
+  def announcement
+    a = {
+      :available_memory => @available_memory
     }
 
     a
   end
 
-  def get_instance_healthz(instance)
+  def healthz_details
+    healthz = "ok"
+    healthz
+  end
+
+  def get_status(instance)
     #FIXME: stub handler, need sophisticated implementation
     res = "ok"
     res

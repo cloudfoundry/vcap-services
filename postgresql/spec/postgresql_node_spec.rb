@@ -437,7 +437,7 @@ describe "Postgresql node normal cases" do
       self_db.should_not be_nil
 
       healthz = @node.healthz_details()
-      healthz.keys.size.should == 1
+      healthz.should == "ok"
 
       sleep 0.1
       varz = @node.varz_details
@@ -457,17 +457,17 @@ describe "Postgresql node normal cases" do
     EM.run do
       varz = @node.varz_details()
       instance = @db['name']
-      varz[:provisioned_services].each do |service_instance|
-        if (service_instance[:instance_name] == instance.to_sym)
-          service_instance[:instance_status].should == "ok"
+      varz[:instances].each do |service_instance|
+        if (service_instance[:name] == instance.to_sym)
+          service_instance[:status].should == "ok"
         end
       end
       conn = @node.connection
       conn.query("drop database #{instance}")
       varz = @node.varz_details()
-      varz[:provisioned_services].each do |service_instance|
-        if (service_instance[:instance_name] == instance.to_sym)
-          service_instance[:instance_status].should == "fail"
+      varz[:instances].each do |service_instance|
+        if (service_instance[:name] == instance.to_sym)
+          service_instance[:status].should == "fail"
         end
       end
       # restore db so cleanup code doesn't complain.
@@ -850,10 +850,10 @@ describe "Postgresql node special cases" do
       EM.add_timer(0.1) {EM.stop}
     end
     healthz = node.healthz_details()
-    healthz[:self].should == "ok"
+    healthz.should == "ok"
     node.connection.close
     healthz = node.healthz_details()
-    healthz[:self].should == "fail"
+    healthz.split("\:")[0].should == "fail"
   end
 
   it "should return node not ready if postgresql server is not connected" do
