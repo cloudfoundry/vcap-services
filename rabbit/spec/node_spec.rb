@@ -261,7 +261,7 @@ describe VCAP::Services::Rabbit::Node do
       varz[:provisioned_instances][0][:vhost].should == @credentials["vhost"]
       varz[:provisioned_instances][0][:admin_username].should == @credentials["user"]
       varz[:provisioned_instances][0][:plan].should == "free"
-      varz[:provisioned_instances][0][:status].should == "ok"
+      varz[:instances][@credentials["name"].to_sym].should == "ok"
       @node.unprovision(@credentials["name"])
     end
   end

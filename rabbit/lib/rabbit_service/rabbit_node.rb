@@ -234,6 +234,10 @@ class VCAP::Services::Rabbit::Node
       varz[:provisioned_instances] << get_varz(instance)
       varz[:provisioned_instances_num] += 1
     end
+    varz[:instances] = {}
+    ProvisionedService.all.each do |instance|
+      varz[:instances][instance.name.to_sym] = get_status(instance)
+    end
     varz
   rescue => e
     @logger.warn(e)
@@ -481,7 +485,6 @@ EOF
     varz[:usage][:queues_num] = list_queues(credentials, instance.vhost).size
     varz[:usage][:exchanges_num] = list_exchanges(credentials, instance.vhost).size
     varz[:usage][:bindings_num] = list_bindings(credentials, instance.vhost).size
-    varz[:status] = get_status(instance)
     varz
   end
 
