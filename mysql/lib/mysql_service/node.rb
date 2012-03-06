@@ -46,6 +46,7 @@ class VCAP::Services::Mysql::Node
     super(options)
 
     @mysql_config = options[:mysql]
+    @connection_pool_size = options[:connection_pool_size]
 
     @max_db_size = options[:max_db_size] * 1024 * 1024
     @max_long_query = options[:max_long_query]
@@ -145,7 +146,7 @@ class VCAP::Services::Mysql::Node
 
     5.times do
       begin
-        return ConnectionPool.new(:host => host, :username => user, :password => password, :database => "mysql", :port => port.to_i, :socket => socket, :logger => @logger)
+        return ConnectionPool.new(:host => host, :username => user, :password => password, :database => "mysql", :port => port.to_i, :socket => socket, :logger => @logger, :pool => @connection_pool_size)
       rescue Mysql2::Error => e
         @logger.error("MySQL connection attempt failed: [#{e.errno}] #{e.error}")
         sleep(5)
