@@ -607,7 +607,7 @@ describe "Mysql server node" do
     EM.run do
       provision_served = @node.provision_served
       binding_served = @node.binding_served
-      NUM = 20
+      NUM = 5
       threads = []
       NUM.times do
         threads << Thread.new do
