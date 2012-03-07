@@ -45,14 +45,11 @@ module DataMapper
 
   # The following code will overwrite DataMapper's functions, and replace
   # them with a synchronized version of the same function.
-  #
-  # NOTICE: some functions will be called twice, for instance, save a resource
-  # with foreign keys, so the synchronize function needs to be careful on
-  # deadlock.
+  
   module Resource
     alias original_save save
     alias original_destroy destroy
-
+    
     def save
       LOCK.synchronize do
         original_save
@@ -86,6 +83,8 @@ module DataMapper
   class Collection
     alias original_each each
     alias original_at []
+    alias original_get get
+    alias original_empty? empty?
 
     def each(&block)
       instances = []
@@ -102,8 +101,21 @@ module DataMapper
         original_at(*args)
       end
     end
-  end
 
+    # what we should add!
+    def get(*args)
+      LOCK.synchronize do
+        original_get(*args)
+      end
+    end
+    
+    def empty?()
+      LOCK.synchronize do
+        original_empty?()
+      end
+    end  
+  end
+  
   # For auto_upgrade!
   module Migrations
     module SingletonMethods
@@ -116,5 +128,4 @@ module DataMapper
       end
     end
   end
-
 end
