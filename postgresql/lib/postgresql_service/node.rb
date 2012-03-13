@@ -17,6 +17,7 @@ end
 
 require "postgresql_service/common"
 require "postgresql_service/util"
+require "postgresql_service/model"
 require "postgresql_service/storage_quota"
 require "postgresql_service/postgresql_error"
 
@@ -27,30 +28,11 @@ class VCAP::Services::Postgresql::Node
 
   include VCAP::Services::Postgresql::Util
   include VCAP::Services::Postgresql::Common
+  include VCAP::Services::Postgresql::Model
   include VCAP::Services::Postgresql
-
-  class Provisionedservice
-    include DataMapper::Resource
-    property :name,       String,   :key => true
-    # property plan is deprecated. The instances in one node have same plan.
-    property :plan,       Integer, :required => true
-    property :quota_exceeded,  Boolean, :default => false
-    has n, :bindusers
-  end
-
-  class Binduser
-    include DataMapper::Resource
-    property :user,       String,   :key => true
-    property :sys_user,    String,    :required => true
-    property :password,   String,   :required => true
-    property :sys_password,    String,    :required => true
-    property :default_user,  Boolean, :default => false
-    belongs_to :provisionedservice
-  end
 
   def initialize(options)
     super(options)
-
     @postgresql_config = options[:postgresql]
 
     @max_db_size = options[:max_db_size] * 1024 * 1024
@@ -72,9 +54,7 @@ class VCAP::Services::Postgresql::Node
   end
 
   def pre_send_announcement
-    DataMapper.setup(:default, @local_db)
-    DataMapper::auto_upgrade!
-
+    setup_datamapper(:default, @local_db)
     @connection = postgresql_connect(@postgresql_config["host"],@postgresql_config["user"],@postgresql_config["pass"],@postgresql_config["port"],@postgresql_config["database"])
     check_db_consistency()
 
@@ -277,10 +257,22 @@ class VCAP::Services::Postgresql::Node
     end
   end
 
+  def is_default_bind_user(user_name)
+    find_user = Binduser.get(user_name)
+    if find_user.nil? or find_user.default_user == false
+      false
+    else
+      true
+    end
+  end
+
   def kill_long_queries
-    process_list = @connection.query("select * from pg_stat_activity")
+    # (extract(epoch from current_timestamp) - extract(epoch from query_start)) as runtime
+    # Notice: we should use current_timestamp or timeofday, the difference is that the current_timestamp only executed once at the beginning of the transaction, while dayoftime will return a text string of wall-clock time and advances during the transaction
+    # Filtering the long queries in the pg statement is better than filtering using the iteration of ruby after select all activties
+    process_list = @connection.query("select * from (select procpid, datname, query_start, usename, (extract(epoch from current_timestamp) - extract(epoch from query_start)) as run_time from pg_stat_activity where query_start is not NULL and usename != '#{@postgresql_config['user']}' and current_query !='<IDLE>') as inner_table  where run_time > #{@max_long_query}")
     process_list.each do |proc|
-      if (proc["query_start"] != nil and Time.now.to_i - Time::parse(proc["query_start"]).to_i >= @max_long_query) and (proc["current_query"] != "<IDLE>") and (proc["usename"] != @postgresql_config["user"]) then
+      if is_default_bind_user(proc["usename"]) != true  then
         @connection.query("select pg_terminate_backend(#{proc['procpid']})")
         @logger.info("Killed long query: user:#{proc['usename']} db:#{proc['datname']} time:#{Time.now.to_i - Time::parse(proc['query_start']).to_i} info:#{proc['current_query']}")
         @long_queries_killed += 1
@@ -291,9 +283,10 @@ class VCAP::Services::Postgresql::Node
   end
 
   def kill_long_transaction
-    process_list = @connection.query("select * from pg_stat_activity")
+    # referer kill_long_queries
+    process_list = @connection.query("select * from (select procpid, datname, xact_start, usename, (extract(epoch from current_timestamp) - extract(epoch from xact_start)) as run_time from pg_stat_activity where xact_start is not NULL and usename != '#{@postgresql_config['user']}') as inner_table where run_time > #{@max_long_tx}")
     process_list.each do |proc|
-      if (proc["xact_start"] != nil and Time.now.to_i - Time::parse(proc["xact_start"]).to_i >= @max_long_tx) and (proc["usename"] != @postgresql_config["user"]) then
+      if is_default_bind_user(proc["usename"]) != true  then
         @connection.query("select pg_terminate_backend(#{proc['procpid']})")
         @logger.info("Killed long transaction: user:#{proc['usename']} db:#{proc['datname']} active_time:#{Time.now.to_i - Time::parse(proc['xact_start']).to_i}")
         @long_tx_killed += 1
@@ -668,6 +661,8 @@ class VCAP::Services::Postgresql::Node
     @logger.debug("Restore db #{name} using backup at #{backup_path}")
     service = Provisionedservice.get(name)
     raise PostgresqlError.new(PostgresqlError::POSTGRESQL_CONFIG_NOT_FOUND, name) unless service
+    default_user = service.bindusers.all( :default_user => true )[0]
+    raise "No default user for provisioned service #{name}" unless default_user
 
     db_connection = postgresql_connect(@postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name)
     block_user_from_db(db_connection, service)
@@ -680,9 +675,14 @@ class VCAP::Services::Postgresql::Node
     unblock_user_from_db(db_connection, service)
     db_connection.close
 
-    host, user, port =  %w{host user port}.map { |opt| @postgresql_config[opt] }
+    host, port =  %w{host port}.map { |opt| @postgresql_config[opt] }
     path = File.join(backup_path, "#{name}.dump")
+
+    user =  default_user[ :user ]
+    passwd = default_user[ :password ]
+
     cmd = "#{@restore_bin} -h #{host} -p #{port} -U #{user} -d #{name} #{path}"
+    #{'PGPASSWORD' => passwd }
     o, e, s = exe_cmd(cmd)
     if s.exitstatus == 0
       return true
@@ -710,17 +710,25 @@ class VCAP::Services::Postgresql::Node
 
   # Dump db content into given path
   def dump_instance(prov_cred, binding_creds, dump_file_path)
-    @logger.debug("Dump instance #{prov_cred["name"]} request.")
     name = prov_cred["name"]
-    host, user, password, port =  %w{host user pass port}.map { |opt| @postgresql_config[opt] }
-    dump_file = File.join(dump_file_path, "#{name}.dump")
-    @logger.info("Dump instance #{name} content to #{dump_file}")
-    cmd = "#{@dump_bin} -Fc -h #{host} -p #{port} -U #{user} -f #{dump_file} #{name}"
-    o, e, s = exe_cmd(cmd)
-    if s.exitstatus == 0
-      return true
+    @logger.debug("Dump instance #{name} request.")
+    host, port =  %w{host port}.map { |opt| @postgresql_config[opt] }
+    default_user = Provisionedservice.get(name).bindusers.all(:default_user => true)[0]
+    if default_user.nil?
+      raise "No default user to dump instance."
     else
-      return nil
+      user = default_user[:user]
+      passwd = default_user[:password]
+      dump_file = File.join(dump_file_path, "#{name}.dump")
+      @logger.info("Dump instance #{name} content to #{dump_file}")
+      cmd = "#{@dump_bin} -Fc -h #{host} -p #{port} -U #{user} -f #{dump_file} #{name}"
+      #{'PGPASSWORD' => passwd }
+      o, e, s = exe_cmd(cmd)
+      if s.exitstatus == 0
+        return true
+      else
+        return nil
+      end
     end
   rescue => e
     @logger.error("Error during dump_instance #{e}")
@@ -730,21 +738,28 @@ class VCAP::Services::Postgresql::Node
   # Provision and import dump files
   # Refer to #dump_instance
   def import_instance(prov_cred, binding_creds_hash, dump_file_path, plan)
-    @logger.debug("Import instance #{prov_cred["name"]} request.")
     name = prov_cred["name"]
+    @logger.debug("Import instance #{name} request.")
     @logger.info("Provision an instance with plan: #{plan} using data from #{prov_cred.inspect}")
     provision(plan, prov_cred)
     bind_all_creds(name, binding_creds_hash)
-    name = prov_cred["name"]
-    import_file = File.join(dump_file_path, "#{name}.dump")
-    host, user, password, port =  %w{host user pass port}.map { |opt| @postgresql_config[opt] }
-    @logger.info("Import data from #{import_file} to database #{name}")
-    cmd = "#{@restore_bin} -h #{host} -p #{port} -U #{user} -d #{name} #{import_file}"
-    o, e, s = exe_cmd(cmd)
-    if s.exitstatus == 0
-      return true
+    host, port =  %w{host port}.map { |opt| @postgresql_config[opt] }
+    default_user = Provisionedservice.get(name).bindusers.all(:default_user => true)[0]
+    if default_user.nil?
+      raise "No default user to import instance"
     else
-      return nil
+      user = default_user[:user]
+      passwd = default_user[:password]
+      import_file = File.join(dump_file_path, "#{name}.dump")
+      @logger.info("Import data from #{import_file} to database #{name}")
+      cmd = "#{@restore_bin} -h #{host} -p #{port} -U #{user} -d #{name} #{import_file}"
+      #{'PGPASSWORD' => passwd }
+      o, e, s = exe_cmd(cmd)
+      if s.exitstatus == 0
+        return true
+      else
+        return nil
+      end
     end
   rescue => e
     @logger.error("Error during import_instance #{e}")
@@ -776,9 +791,9 @@ class VCAP::Services::Postgresql::Node
   end
 
   # shell CMD wrapper and logger
-  def exe_cmd(cmd, stdin=nil)
+  def exe_cmd(cmd, env={}, stdin=nil)
     @logger.debug("Execute shell cmd:[#{cmd}]")
-    o, e, s = Open3.capture3(cmd, :stdin_data => stdin)
+    o, e, s = Open3.capture3(env, cmd, :stdin_data => stdin)
     if s.exitstatus == 0
       @logger.info("Execute cmd:[#{cmd}] successd.")
     else

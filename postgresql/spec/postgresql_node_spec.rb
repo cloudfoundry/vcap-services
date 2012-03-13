@@ -289,13 +289,12 @@ describe "Postgresql node normal cases" do
       db2= @node.provision(plan)
       @test_dbs[db2] = []
       fake_creds = []
-      3.times {fake_creds << @db.clone}
+      # the case to login using wrong password is discarded for it will always fail (succeed to login without any exception): rules in pg_hba.conf will make this happen
+      2.times {fake_creds << @db.clone}
       # try to login other's db
       fake_creds[0]["name"] = db2["name"]
-      # try to login using null credential
-      fake_creds[1]["password"] = db2["password"]
-      # try to login using root account
-      fake_creds[2]["user"] = db2["user"]
+      # try to login using the default account (parent role) of other's db default account
+      fake_creds[1]["user"] = db2["user"]
       fake_creds.each do |creds|
         puts creds
         expect{connect_to_postgresql(creds)}.should raise_error
@@ -313,8 +312,13 @@ describe "Postgresql node normal cases" do
       sleep 1
       EM.add_timer(0.1) do
         db = node.provision('free')
-        @test_dbs[db] = []
-        conn = connect_to_postgresql(db)
+        binding = node.bind(db['name'], @default_opts)
+        @test_dbs[db] = [binding]
+        # use a non-default user (not parent role)
+        user = db.dup
+        user['user'] = binding['user']
+        user['password'] = binding['password']
+        conn = connect_to_postgresql(user)
         # prepare a transaction and not commit
         conn.query("create table a(id int)")
         conn.query("insert into a values(10)")
