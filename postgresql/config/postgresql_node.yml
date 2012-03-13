@@ -6,7 +6,7 @@ base_dir: /var/vcap/services/postgresql/
 ip_route: 127.0.0.1
 restore_bin: pg_restore
 dump_bin: pg_dump
-mbus: nats://localhost:4222
+mbus: nats://nats:nats@localhost:4222
 logging:
   level: debug
 pid: /var/vcap/sys/run/postgresql_node.pid
