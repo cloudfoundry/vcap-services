@@ -1,4 +1,13 @@
+# for jenkins test
+# patch set 3
+# patch set 4
+# patch set 5: added unit test for base, rabbit
+# patch set 6: timeout test for rabbit
+# patch set 7: seperate rabbit from other unit test
+# patch set 9: fixed error in base config, seperate rabbit from other unit test 
+
 require 'rake'
+require 'ci/reporter/rake/rspec'
 
 desc "Run specs"
 task "spec" => ["bundler:install:test", "test:spec"]
@@ -36,4 +45,8 @@ namespace "test" do
  task "spec:rcov" do |t|
     sh("cd spec && rake spec:rcov")
   end
+end
+
+namespace "ci" do
+  task "spec" => ["ci:setup:rspec", "^spec"]
 end
