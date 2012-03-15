@@ -14,6 +14,10 @@ require "async_gw_spec_helper"
 require "backup_spec_helper"
 require 'base/service_message'
 require 'base/service_error'
+require 'base/job/async_job'
+require 'base/job/lock'
+require 'base/job/serialization'
+require 'base/job/snapshot'
 
 TEST_NODE_ID = "node-1"
 TEST_PURGE_INS_HASH =
