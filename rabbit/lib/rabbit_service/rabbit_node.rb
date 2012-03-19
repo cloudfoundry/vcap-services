@@ -349,7 +349,11 @@ class VCAP::Services::Rabbit::Node
     # Here need check whether the object is in db or not,
     # otherwise the destory operation will persist the object from memory to db without deleting it,
     # the behavior of datamapper is doing persistent work at the end of each save/update/destroy API
-    raise RabbitError.new(RabbitError::RABBIT_DESTORY_INSTANCE_FAILED, instance.inspect) unless instance.new? || instance.destroy
+    if instance.new?
+      raise RabbitError.new(RabbitError::RABBIT_DESTORY_INSTANCE_FAILED, instance.inspect)
+    else
+      instance.destroy
+    end
   end
 
   def get_instance(instance_id)

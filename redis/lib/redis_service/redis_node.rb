@@ -297,7 +297,11 @@ class VCAP::Services::Redis::Node
   end
 
   def destroy_instance(instance)
-    raise RedisError.new(RedisError::REDIS_DESTORY_INSTANCE_FAILED, instance.inspect) unless instance.destroy
+    if instance.new?
+      raise RedisError.new(RedisError::REDIS_DESTORY_INSTANCE_FAILED, instance.inspect)
+    else
+      instance.destroy
+    end
   end
 
   def get_instance(name)

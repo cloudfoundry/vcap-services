@@ -295,7 +295,11 @@ class VCAP::Services::MongoDB::Node
 
     return_port(provisioned_service.port)
 
-    raise "Could not cleanup service: #{provisioned_service.errors.inspect}" unless provisioned_service.destroy
+    if provisioned_service.new?
+      raise "Could not cleanup service: #{provisioned_service.errors.inspect}"
+    else
+      provisioned_service.destroy
+    end
     true
   end
 
