@@ -1,3 +1,6 @@
+# for jenkins branch r10 test with mongo and rabbit
+# for jenkins test patch 2
+
 require 'rake'
 require 'ci/reporter/rake/rspec'
 
