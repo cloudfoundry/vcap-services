@@ -1,3 +1,7 @@
+# for jenkins test: new ci code
+# for jenkins test: new ci code patchset 2
+# for jenkins test: new ci code patchset 3
+
 require 'rake'
 
 desc "Run specs"
