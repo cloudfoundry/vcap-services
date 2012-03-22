@@ -1,3 +1,5 @@
+# for jenkins test: new ci code
+
 require 'rake'
 
 desc "Run specs"
