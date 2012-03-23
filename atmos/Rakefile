@@ -1,3 +1,5 @@
+# for jenkins test: added base unit test
+
 require 'rake'
 
 desc "Run specs"
