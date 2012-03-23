@@ -1,3 +1,9 @@
+# for jenkins test: added base unit test
+# for jenkins test: added base unit test 2
+# for jenkins test: added base unit test 3
+# for jenkins test: added base unit test 4
+# for jenkins test: added base unit test 5
+
 require 'rake'
 
 desc "Run specs"
