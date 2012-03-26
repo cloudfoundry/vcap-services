@@ -1,3 +1,6 @@
+# for jenkins test: patchset 1
+# for jenkins test: patchset 2
+
 require 'rake'
 
 desc "Run specs"
