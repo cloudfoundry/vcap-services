@@ -1,3 +1,5 @@
+# for jenkins master behavior test
+
 require 'rake'
 
 desc "Run specs"
