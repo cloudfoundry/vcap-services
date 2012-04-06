@@ -18,7 +18,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   include VCAP::Services::AsyncJob
   include VCAP::Services::Snapshot
 
-  BARRIER_TIMEOUT = 2
+  BARRIER_TIMEOUT = 5
   MASKED_PASSWORD = '********'
 
   def initialize(options)
