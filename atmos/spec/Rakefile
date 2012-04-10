@@ -1,3 +1,9 @@
+# for ci.cloudfoundry.org services test patch 1
+# for ci.cloudfoundry.org services test patch 2
+# for ci.cloudfoundry.org services test patch 3
+
+# for ci.cloudfoundry.org services test patch 5
+
 require 'rake'
 require 'tempfile'
 
