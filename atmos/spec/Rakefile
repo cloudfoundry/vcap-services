@@ -1,3 +1,5 @@
+# for ci.cloudfoundry.org services test patch 1
+
 require 'rake'
 require 'tempfile'
 
