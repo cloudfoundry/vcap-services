@@ -36,7 +36,7 @@ module VCAP::Services::Base::AsyncJob
         existing_lock = @redis.get(@name)
         if existing_lock.to_f < Time.now.to_f
           @logger.debug("Lock #{@name} is expired, trying to acquire it.")
-          break if watch_and_update(expiration)
+          break if watch_and_update(@redis, expiration)
         end
 
         raise ServiceError.new(ServiceError::JOB_QUEUE_TIMEOUT, @timeout)if Time.now.to_f - started > @timeout
@@ -58,10 +58,10 @@ module VCAP::Services::Base::AsyncJob
       end
     end
 
-    def watch_and_update(expiration)
-      @redis.watch(@name)
-      res = @redis.multi do
-        @redis.set(@name, expiration)
+    def watch_and_update(redis, expiration)
+      redis.watch(@name)
+      res = redis.multi do
+        redis.set(@name, expiration)
       end
       if res
         @logger.debug("Lock #{@name} is renewed and acquired.")
@@ -73,25 +73,26 @@ module VCAP::Services::Base::AsyncJob
 
     def setup_refresh_thread
       t = Thread.new do
+        # create new redis client in case it's not thread safe.
+        redis = ::Redis.new(Config.redis_config)
         sleep_interval = [1.0, @expiration/2].max
         begin
           loop do
             @logger.debug("Renewing lock #{@name}")
-            @redis.watch(@name)
-            existing_lock = @redis.get(@name)
+            redis.watch(@name)
+            existing_lock = redis.get(@name)
 
             break if existing_lock.to_f > @lock_expiration # lock has been updated by others
             expiration = Time.now.to_f + @expiration + 1
-            break unless watch_and_update(expiration)
+            break unless watch_and_update(redis, expiration)
             @lock_expiration = expiration
-
             sleep(sleep_interval)
           end
         rescue => e
           @logger.error("Can't renew lock #{@name}, #{e}")
         ensure
           @logger.debug("Lock renew thread for #{@name} exited.")
-          @redis.quit
+          redis.quit
         end
       end
       t
