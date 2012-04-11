@@ -1,3 +1,6 @@
+# for jenkins test: monitor on more branches
+# for jenkins test: monitor on more branches 2
+
 require 'rake'
 
 desc "Run specs"
