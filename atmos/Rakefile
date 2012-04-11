@@ -1,3 +1,5 @@
+# for jenkins test ci.cloudfoundry.org
+
 require 'rake'
 
 desc "Run specs"
