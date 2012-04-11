@@ -1,3 +1,6 @@
+# for jenkins test: monitoring on master branch
+# for jenkins test: weather
+
 require 'rake'
 
 desc "Run specs"
