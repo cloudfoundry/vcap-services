@@ -1,0 +1,17 @@
+Requirements:
+  ruby 1.9.2+, curl, vmc 0.1.3.6.beta5+
+HOWTO
+  Configure: Edit the config file
+  Test: You could execute the script test.sh or follow these steps by yourself.
+    Create users for test
+      run.sh create_user
+    Test and verify
+      run.sh create_app && run.sh load_app
+    OR
+      run.sh create_app && run.sh funload_app
+NOTE
+   run.sh start_app:   may exhaust your DEAs if you have no enough DEAs
+   run.sh funload_app: use this to load data if you have no enough DEAs
+Delete apps/services/users
+   purge.sh
+
