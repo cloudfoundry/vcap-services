@@ -1,0 +1,51 @@
+#!/bin/bash
+
+# base_dir: the location of the tool
+base_dir=/Users/frankl/workbench/cloudfoundry/instance_scale_test
+
+# suggest_url and target_url: your cloudfoundry deployment
+suggest_url=cf36.dev.las01.vcsops.com
+target_url="http://api.$suggest_url"
+
+# admin user and password
+admin_user=admin@vmware.com
+admin_password=abc123
+
+# how many users
+user_range=81
+
+# the prefix of user email account
+user_prefix=cfost
+
+# the password of the users
+user_passwd=abc123
+
+# how many application and services one user could generate at most. recommend appnum = servicenum
+appnum=16
+servicenum=16
+
+# which application you will use, now we only support one
+app_label=app_sinatra_service
+app_framework=sinatra
+
+# which service you want to test, we support postgresql, mysql, atmos, redis, mongodb, rabbit
+service_type=postgresql
+
+# table
+table=cfost
+
+# how many recoreds/rows you will insert? (the size of each record/row will be 1 mege byte)
+mega=10
+
+# concurrency control
+# concurrency: how many users will do the test in parallel
+do_start=1
+concurrency=40
+do_finish=$user_range
+
+# where to store the log and token. you must use the vmc that supports --token-file option
+log_dir=/tmp/cfost_logs
+token_dir=/tmp/cfost_tokens
+
+mkdir -p $token_dir
+mkdir -p $log_dir
