@@ -166,6 +166,10 @@ module VCAP::Services::Base::AsyncJob
           lock = create_lock
 
           lock.lock do
+            mt = @config["snapshots_base_dir"]
+            pn = Pathname.new(mt)
+            raise ServiceError.new(ServiceError::MOUNTPOINT_FAILURE, mt) unless pn.mountpoint?
+
             quota = @config["snapshot_quota"]
             if quota
               current = service_snapshots_count(name)

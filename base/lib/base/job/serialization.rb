@@ -135,6 +135,10 @@ module VCAP::Services::Base::AsyncJob
 
           lock = create_lock
           lock.lock do
+            mt = @config["serialization_base_dir"]
+            pn = Pathname.new(mt)
+            raise ServiceError.new(ServiceError::MOUNTPOINT_FAILURE, mt) unless pn.mountpoint?
+
             result = execute
             @logger.info("Results of create serialized url: #{result}")
 
@@ -179,6 +183,10 @@ module VCAP::Services::Base::AsyncJob
 
           lock = create_lock
           lock.lock do
+            mt = File.dirname(@config["tmp_dir"])
+            pn = Pathname.new(mt)
+            raise ServiceError.new(ServiceError::MOUNTPOINT_FAILURE, mt) unless pn.mountpoint?
+
             @temp_file_path = File.join(@config["tmp_dir"], "#{name}")
             FileUtils.rm_rf(temp_file_path)
             fetch_url(url, temp_file_path)

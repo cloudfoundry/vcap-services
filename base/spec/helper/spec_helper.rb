@@ -217,3 +217,9 @@ def generate_bind_list(count)
   end
   list
 end
+
+class Pathname
+  def mountpoint?
+    true
+  end
+end
