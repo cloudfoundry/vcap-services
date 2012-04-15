@@ -144,6 +144,11 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     binding_creds = get_all_bindings(binding_handles)
     file_path = get_migration_folder(prov_handle["service_id"])
     FileUtils.mkdir_p(file_path)
+
+    mt = @migration_nfs
+    pn = Pathname.new(mt)
+    raise ServiceError.new(ServiceError::MOUNTPOINT_FAILURE, mt) unless pn.mountpoint?
+
     result = disable_instance(prov_cred, binding_creds)
     if result
       # Do dump together with disable for simpler migration logic

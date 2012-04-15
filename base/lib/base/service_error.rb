@@ -40,6 +40,7 @@ module VCAP
 
           # 30500 - 30599  500 Internal Error
           INTERNAL_ERROR = [30500, HTTP_INTERNAL, 'Internal Error']
+          MOUNTPOINT_FAILURE = [30501, HTTP_INTERNAL, '%s is not mounted']
 
           # 30600 - 30699  503 Service Unavailable
           SERVICE_UNAVAILABLE = [30600, HTTP_SERVICE_UNAVAIL, 'Service unavailable']
