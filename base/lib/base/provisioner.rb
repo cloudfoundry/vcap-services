@@ -771,6 +771,11 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @logger.debug("import serialized data from request for service_id=#{service_id}")
     svc = @prov_svcs[service_id]
     raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
+
+    mt = File.dirname(@upload_temp_dir)
+    pn = Pathname.new(mt)
+    raise ServiceError.new(ServiceError::MOUNTPOINT_FAILURE, mt) unless pn.mountpoint?
+
     temp_path = File.join(@upload_temp_dir, "#{service_id}.gz")
     # clean up previous upload
     FileUtils.rm_rf(temp_path)
