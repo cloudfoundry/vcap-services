@@ -669,6 +669,24 @@ describe "Mysql server node" do
     end
   end
 
+  it "should add timeout option to all management mysql connection" do
+    EM.run do
+      opts = @opts.dup
+      timeout = 1
+      opts[:connection_wait_timeout] = timeout
+      node = VCAP::Services::Mysql::Node.new(opts)
+
+      EM.add_timer(2) do
+        node.pool.with_connection do |conn|
+          # simulate connection idle
+          sleep (timeout * 5)
+          expect{ conn.query("select 1") }.should raise_error(Mysql2::Error, /MySQL server has gone away/)
+        end
+        EM.stop
+      end
+    end
+  end
+
   after:each do
     @test_dbs.keys.each do |db|
       begin
