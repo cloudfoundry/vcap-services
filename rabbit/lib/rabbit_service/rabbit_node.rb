@@ -232,13 +232,12 @@ class VCAP::Services::Rabbit::Node
     varz[:provisioned_instances_num] = 0
     varz[:max_capacity] = @max_capacity
     varz[:available_capacity] = @capacity
-    ProvisionedService.all.each do |instance|
-      varz[:provisioned_instances] << get_varz(instance)
-      varz[:provisioned_instances_num] += 1
-    end
     varz[:instances] = {}
     ProvisionedService.all.each do |instance|
-      varz[:instances][instance.name.to_sym] = get_status(instance)
+      status = get_status(instance)
+      varz[:instances][instance.name.to_sym] = status
+      varz[:provisioned_instances_num] += 1
+      varz[:provisioned_instances] << get_varz(instance) if status =="ok"
     end
     varz
   rescue => e
