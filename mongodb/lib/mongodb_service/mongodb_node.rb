@@ -188,6 +188,27 @@ class VCAP::Services::MongoDB::Node
     true
   end
 
+  def cleanup_service(provisioned_service)
+    @logger.info("Killing #{provisioned_service.name} started with pid #{provisioned_service.pid}")
+
+    close_connection(provisioned_service)
+
+    provisioned_service.kill(:SIGKILL) if provisioned_service.running?
+
+    dir = service_dir(provisioned_service.name)
+    log_dir = log_dir(provisioned_service.name)
+
+    EM.defer do
+      FileUtils.rm_rf(dir)
+      FileUtils.rm_rf(log_dir)
+    end
+
+    return_port(provisioned_service.port)
+
+    raise "Could not cleanup service: #{provisioned_service.errors.inspect}" unless provisioned_service.new? || provisioned_service.destroy
+    true
+  end
+
   def bind(name, bind_opts, credential = nil)
     @logger.info("Bind request: name=#{name}, bind_opts=#{bind_opts}")
     bind_opts ||= BIND_OPT
@@ -253,6 +274,20 @@ class VCAP::Services::MongoDB::Node
     nil
   end
 
+  def enable_instance(service_credential, binding_credentials)
+    @logger.info("enable_instance request: service_credential=#{service_credential}, binding_credentials=#{binding_credentials}")
+    service_id = service_credential["name"]
+    provisioned_service = ProvisionedService.get(service_id)
+    raise ServiceError.new(ServiceError::NOT_FOUND, service_credential["name"]) if provisioned_service.nil?
+    pid = start_instance(provisioned_service)
+    provisioned_service.pid = pid
+    raise "Cannot save provision_service" unless provisioned_service.save
+    true
+  rescue => e
+    @logger.warn(e)
+    nil
+  end
+
   def dump_instance(service_credential, binding_credentials, dump_dir)
     @logger.info("dump_instance request: service_credential=#{service_credential}, binding_credentials=#{binding_credentials}, dump_dir=#{dump_dir}")
 
@@ -278,8 +313,9 @@ class VCAP::Services::MongoDB::Node
     nil
   end
 
-  def enable_instance(service_credential, binding_credentials)
-    @logger.info("enable_instance request: service_credential=#{service_credential}, binding_credentials=#{binding_credentials}")
+  def update_instance(service_credential, binding_credentials)
+    @logger.info("update_instance request: service_credential=#{service_credential}, binding_credentials=#{binding_credentials}")
+
     # Load provisioned_service from dumped file
     p_service = ProvisionedService.get(service_credential['name'])
     raise "Cannot find service #{service_credential['name']}" if p_service.nil?
@@ -596,5 +632,5 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     "ok"
   rescue => e
     "fail"
-  end
+end
 end

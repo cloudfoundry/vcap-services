@@ -123,14 +123,22 @@ describe "Mysql server node" do
           expect{ conn.query("insert into test value('test')")}.should raise_error(Mysql2::Error)
           conn2 = connect_to_mysql(@db)
           expect{ conn.query("insert into test value('test')")}.should raise_error(Mysql2::Error)
-          conn.query("delete from test")
+          # new binding's write privilege should also be revoked.
+          new_binding = node.bind(@db['name'], @default_opts)
+          @test_dbs[@db] << new_binding
+          new_conn = connect_to_mysql(new_binding)
+          expect { new_conn.query("insert into test value('new_test')")}.should raise_error(Mysql2::Error)
           EM.add_timer(3) do
             expect {conn.query('SELECT 1')}.should raise_error
             conn.close
             conn = connect_to_mysql(binding)
+            conn.query("delete from test")
             # write privilege should restore
-            expect{ conn.query("insert into test value('test')")}.should_not raise_error
-            EM.stop
+            EM.add_timer(2) do
+              conn = connect_to_mysql(binding)
+              expect{ conn.query("insert into test value('test')")}.should_not raise_error
+              EM.stop
+            end
           end
         end
       end
@@ -473,7 +481,28 @@ describe "Mysql server node" do
           "binding_options" => @default_opts,
         }
       }
-      result = @node.enable_instance(db, value)
+      @node.enable_instance(db, value).should be_true
+      expect {conn = connect_to_mysql(binding)}.should_not raise_error
+      EM.stop
+    end
+  end
+
+  it "should recreate bindings when update instance handles" do
+    EM.run do
+      db = @node.provision(@default_plan)
+      @test_dbs[db] = []
+      binding = @node.bind(db['name'], @default_opts)
+      @test_dbs[db] << binding
+      conn = connect_to_mysql(binding)
+      @node.disable_instance(db, [binding])
+      expect {conn = connect_to_mysql(binding)}.should raise_error
+      value = {
+        "fake_service_id" => {
+          "credentials" => binding,
+          "binding_options" => @default_opts,
+        }
+      }
+      result = @node.update_instance(db, value)
       result.should be_instance_of Array
       expect {conn = connect_to_mysql(binding)}.should_not raise_error
       EM.stop
