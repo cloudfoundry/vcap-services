@@ -5,7 +5,6 @@ require "rest-client"
 
 include VCAP::Services::Neo4j
 
-
 module VCAP
   module Services
     module Neo4j
@@ -31,8 +30,13 @@ describe VCAP::Services::Neo4j::Node do
   after :all do
     EM.run do
       begin
+<<<<<<< HEAD
       @node.shutdown()
       EM.stop
+=======
+        @node.shutdown() unless @node.nil?
+        EM.stop
+>>>>>>> services-r11-test
       rescue
       end
     end
@@ -76,5 +80,3 @@ describe VCAP::Services::Neo4j::Node do
   end
 
 end
-
-

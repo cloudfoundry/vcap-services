@@ -29,6 +29,15 @@ namespace "bundler" do
 end
 
 namespace "test" do
+<<<<<<< HEAD
+=======
+  def run_task(name)
+    sh("../../../base/bin/nats-util start")
+    sh("cd spec && rake #{name}")
+    sh("../../../base/bin/nats-util stop")
+  end
+
+>>>>>>> services-r11-test
   task "spec" do |t|
     sh("cd spec && rake spec")
   end
