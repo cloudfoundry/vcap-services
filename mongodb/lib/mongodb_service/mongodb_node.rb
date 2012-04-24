@@ -93,11 +93,21 @@ class VCAP::Services::MongoDB::Node
           next
         end
 
+        if p_service.image_file?
+          unless p_service.image_mounted?
+            @logger.warn("Service #{p_service.name} mounting data file")
+            system "mount -n -o loop #{p_service.image_file} #{p_service.data_dir}"
+          end
+        else
+          @logger.warn("Service #{p_service.name} need migration to quota")
+          p_service.to_loopfile
+        end
+
         begin
           p_service.run
         rescue => e
-          p_service.stop
           @logger.error("Error starting service #{p_service.name}: #{e}")
+          p_service.stop
         end
       end
     end
@@ -373,6 +383,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
       raise "Parameter :mongod_log_dir missing" unless args[:mongod_log_dir]
       raise "Parameter :image_dir missing" unless args[:image_dir]
       raise "Parameter :local_db missing" unless args[:local_db]
+      @@mongod_path = args[:mongod_path] ? args[:mongod_path] : 'mongod'
       @@mongorestore_path = args[:mongorestore_path] ? args[:mongorestore_path] : 'mongorestore'
       @@mongodump_path    = args[:mongodump_path] ? args[:mongodump_path] : 'mongodump'
       @@tar_path          = args[:tar_path] ? args[:tar_path] : 'tar'
@@ -453,6 +464,28 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     destroy!
   end
 
+  def image_mounted?
+    mounted = false
+    File.open("/proc/mounts", mode="r") do |f|
+      f.each do |w|
+        if Regexp.new(data_dir) =~ w
+          mounted = true
+          break
+        end
+      end
+    end
+    mounted
+  end
+
+  def to_loopfile
+    FileUtils.mv(data_dir, data_dir+"_bak")
+    FileUtils.mkdir_p(data_dir)
+    system "dd if=/dev/null of=#{image_file} bs=1M seek=#{@@max_db_size}"
+    system "mkfs.ext4 -q -F -O \"^has_journal,uninit_bg\" #{image_file}"
+    system "mount -n -o loop #{image_file} #{data_dir}"
+    FileUtils.cp_r(File.join(data_dir+"_bak", 'data'), data_dir)
+  end
+
   def dump(dir)
     # dump database recorder
     d_file = File.join(dir, 'dump_file')
@@ -505,9 +538,11 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
 
   def stop(timeout=5,sig=:SIGTERM)
     unmapping_port(self[:ip], self[:port])
-    @@warden_lock.synchronize do
-      @@warden_client.call(["stop", self[:container]])
-      @@warden_client.call(["destroy", self[:container]])
+    unless self[:container] == ''
+      @@warden_lock.synchronize do
+        @@warden_client.call(["stop", self[:container]])
+        @@warden_client.call(["destroy", self[:container]])
+      end
     end
     self[:container] = ''
     save
@@ -515,6 +550,24 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
   end
 
   def run
+    # check whether the instance had been properly shutdown
+    # if no, do "mongo --repair" outside of container.
+    # the reason for do it outside of container:
+    #  - when do repair inside container, more disk space required.
+    #       (refer to http://www.mongodb.org/display/DOCS/Durability+and+Repair)
+    #       Container may not have enough space to satisfy the need.
+    #  - when do repair, more mem required (had experience a situation
+    #       where "mongod --repair" hang with mem quota, and it resume when quota increase)
+    # So to avoid these situation, and make things smooth, do it outside container.
+    lockfile = File.join(data_dir, "data", "mongod.lock")
+    if File.size?(lockfile)
+      FileUtils.rm_f(lockfile)
+      tmpdir = File.join("/var/vcap/store/tmp", self[:name])
+      FileUtils.mkdir_p(tmpdir)
+      system "#{@@mongod_path} --repair --repairpath #{tmpdir} --dbpath #{File.join(data_dir, "data")} --port #{self[:port]}"
+      FileUtils.rm_rf(tmpdir)
+    end
+
     @@warden_lock.synchronize do
       req = ["create", {"bind_mounts" => [[File.join(data_dir, 'data'), "/store/data", {"mode" => "rw"}],
                                           [log_dir, "/store/log", {"mode" => "rw"}]]}]
@@ -556,8 +609,16 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     File.join(@@log_dir, self[:name])
   end
 
+  def image_file?
+    File.exists?(image_file)
+  end
+
   def data_dir?
     Dir.exists?(data_dir)
+  end
+
+  def log_dir?
+    Dir.exists?(log_dir)
   end
 
   # user management helper
