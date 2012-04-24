@@ -14,13 +14,17 @@ describe "mongodb provisionedservice class" do
   before :all do
     begin
       @options = get_node_config()
-      Node::ProvisionedService.init(@options)
+      EM.run do
+        @node = Node.new(@options)
+        EM.add_timer(1) { EM.stop }
+      end
     rescue Exception => e
       raise e
     end
   end
 
   after :all do
+    @node.shutdown if @node
     FileUtils.rm_rf(File.dirname(@options[:base_dir]))
   end
 
@@ -155,4 +159,12 @@ describe "mongodb provisionedservice class" do
     data_restored.should be_true
   end
 
+  it "should be able to migrate old instance" do
+    p_service = Node::ProvisionedService.create({ 'port' => 27017 })
+    Node.sh "umount #{p_service.data_dir}"
+    Node.sh "mkdir -p #{p_service.data_dir}/data"
+    Node.sh "dd if=/dev/zero of=#{p_service.data_dir}/data/admin.ns bs=1M count=68"
+    lambda { p_service.to_loopfile }.should_not raise_error()
+    p_service.delete
+  end
 end
