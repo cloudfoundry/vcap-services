@@ -3,6 +3,8 @@ require 'rubygems'
 require 'bundler/setup'
 
 require 'optparse'
+require 'logger'
+require 'logging'
 require 'net/http'
 require 'thin'
 require 'yaml'
@@ -13,7 +15,6 @@ require 'vcap/logging'
 
 $LOAD_PATH.unshift File.dirname(__FILE__)
 require 'asynchronous_service_gateway'
-require 'job/config'
 require 'abstract'
 
 module VCAP
@@ -58,15 +59,6 @@ class VCAP::Services::Base::Gateway
     @config[:logger] = logger
   end
 
-  def setup_async_job_config
-    resque = @config[:resque]
-    if resque
-      resque = VCAP.symbolize_keys(resque)
-      VCAP::Services::Base::AsyncJob::Config.redis_config = resque
-      VCAP::Services::Base::AsyncJob::Config.logger = @config[:logger]
-    end
-  end
-
   def setup_pid
     if @config[:pid]
       pf = VCAP::PidFile.new(@config[:pid])
@@ -80,8 +72,6 @@ class VCAP::Services::Base::Gateway
     setup_vcap_logging
 
     setup_pid
-
-    setup_async_job_config
 
     @config[:host] = VCAP.local_ip(@config[:ip_route])
     @config[:port] ||= VCAP.grab_ephemeral_port

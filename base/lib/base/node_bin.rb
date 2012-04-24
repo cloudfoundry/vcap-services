@@ -2,6 +2,8 @@
 require 'rubygems'
 require 'bundler/setup'
 require 'optparse'
+require 'logger'
+require 'logging'
 require 'yaml'
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..')
