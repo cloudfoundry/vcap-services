@@ -10,7 +10,7 @@ class VCAP::Services::Memcached::Provisioner < VCAP::Services::Base::Provisioner
   include VCAP::Services::Memcached::Common
 
   def node_score(node)
-    node['available_memory']
+    node['available_capacity']
   end
 
 end
