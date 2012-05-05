@@ -64,8 +64,7 @@ class VCAP::Services::Memcached::Node
       if users.include?(user)
         raise SASLOperationError::SASL_OPS_USER_ALREADY_EXITST
       end
-
-      ret = `echo '#{password}' | saslpasswd2 -a memcached -c #{user}  -p`
+      ret = `echo '#{password}' | saslpasswd2 -a memcached -c #{user} -p`
 
       if ret == ''
         return true
@@ -107,6 +106,8 @@ class VCAP::Services::Memcached::Node
     end
   end
 
+  attr_accessor :available_capacity, :db_local_options
+
   def initialize(options)
     super(options)
 
@@ -115,13 +116,11 @@ class VCAP::Services::Memcached::Node
     @base_dir = options[:base_dir]
     FileUtils.mkdir_p(@base_dir)
     @memcached_server_path = options[:memcached_server_path]
-    @available_memory = options[:available_memory]
-    @available_memory_mutex = Mutex.new
-    @max_memory = options[:max_memory]
+    @available_capacity = options[:capacity]
+    @db_local_options = options[:local_db]
     @free_ports = Set.new
     @free_ports_mutex = Mutex.new
     options[:port_range].each {|port| @free_ports << port}
-    @local_db = options[:local_db]
     @disable_password = "disable-#{UUIDTools::UUID.random_create.to_s}"
     @memcached_log_dir = options[:memcached_log_dir]
     @max_clients = @options[:max_clients] || 500
@@ -134,6 +133,11 @@ class VCAP::Services::Memcached::Node
     start_provisioned_instances
   end
 
+  def start_db
+    DataMapper.setup(:default, @db_local_options)
+    DataMapper::auto_upgrade!
+  end
+
   def shutdown
     super
     ProvisionedService.all.each do |instance|
@@ -143,9 +147,10 @@ class VCAP::Services::Memcached::Node
   end
 
   def announcement
-    @available_memory_mutex.synchronize do
+    @capacity_lock.synchronize do
       a = {
-          :available_memory => @available_memory
+          :available_capacity => @available_capacity,
+          :capacity_unit => capacity_unit
       }
     end
   end
@@ -180,8 +185,8 @@ class VCAP::Services::Memcached::Node
 
     begin
       instance.memory = memory_for_instance(instance)
-      @available_memory_mutex.synchronize do
-        @available_memory -= instance.memory
+      @capacity_lock.synchronize do
+        @available_capacity -= capacity_unit
       end
     rescue => e
       raise e
@@ -247,7 +252,6 @@ class VCAP::Services::Memcached::Node
     binding_credentials_map.each do |key, value|
       binding_credentials_map[key]["credentials"] = gen_credentials(instance)
     end
-    start_instance(instance)
 
     [service_credentials, binding_credentials_map]
   rescue => e
@@ -269,8 +273,8 @@ class VCAP::Services::Memcached::Node
     varz = {}
     varz[:provisioned_instances] = []
     varz[:provisioned_instances_num] = 0
-    @available_memory_mutex.synchronize do
-      varz[:max_instances_num] = @options[:available_memory] / @max_memory
+    @capacity_lock.synchronize do
+      varz[:max_instances_num] = @options[:capacity] / capacity_unit
     end
     ProvisionedService.all.each do |instance|
       varz[:provisioned_instances] << get_varz(instance)
@@ -294,13 +298,8 @@ class VCAP::Services::Memcached::Node
     {:self => "fail"}
   end
 
-  def start_db
-    DataMapper.setup(:default, @local_db)
-    DataMapper::auto_upgrade!
-  end
-
   def start_provisioned_instances
-    @logger.debug("Start provisined instaces....")
+    @logger.debug("Start provisioned instance....")
 
     ProvisionedService.all.each do |instance|
       @logger.debug("instance : #{instance.inspect}")
@@ -309,8 +308,8 @@ class VCAP::Services::Memcached::Node
       end
       if instance.listening?
         @logger.warn("Service #{instance.name} already running on port #{instance.port}")
-        @available_memory_mutex.synchronize do
-          @available_memory -= (instance.memory || @max_memory)
+        @capacity_lock.synchronize do
+          @available_capacity -= (instance.memory || @capacity_unit)
         end
         next
       end
@@ -360,10 +359,8 @@ class VCAP::Services::Memcached::Node
   end
 
   def start_instance(instance, db_file = nil)
-    @logger.debug("Starting: #{instance.inspect} on port #{instance.port}")
+    @logger.debug("Starting: #{instance.inspect}")
 
-
-    #$0 = "Starting Memcached instance: #{instance.name}"
     opt = {}
     opt['memory'] = instance.memory
     opt['port'] = instance.port
@@ -375,7 +372,7 @@ class VCAP::Services::Memcached::Node
     @logger.warn("#{@memcached_server_path} #{option_string}")
 
     log_dir = instance_log_dir(instance.name)
-    log_file = File.join(log_dir, "memcachded.log")
+    log_file = File.join(log_dir, "memcached.log")
 
     config_command = @config_command_name
     shutdown_command = @shutdown_command_name
@@ -383,7 +380,6 @@ class VCAP::Services::Memcached::Node
 
     FileUtils.mkdir_p(log_dir)
 
-    #cmd = "#{@memcached_server_path} #{option_string} 2&> #{log_file}"
     cmd = "#{@memcached_server_path} #{option_string}"
     pid = Process.spawn(cmd, :err=>"#{log_file}")
     Process.detach(pid)
@@ -408,8 +404,8 @@ class VCAP::Services::Memcached::Node
     rescue => e
       err_msg << e.message
     end
-    @available_memory_mutex.synchronize do
-      @available_memory += instance.memory
+    @capacity_lock.synchronize do
+      @available_capacity += capacity_unit
     end
     @free_ports_mutex.synchronize do
       @free_ports.add(instance.port)
@@ -504,8 +500,10 @@ class VCAP::Services::Memcached::Node
     varz[:port] = instance.port
     varz[:plan] = instance.plan
     varz[:usage] = {}
-    varz[:usage][:max_memory] = instance.memory.to_f * 1024.0
+    varz[:usage][:capacity_unit] = capacity_unit
     varz[:usage][:max_clients] = @max_clients
+
+    # TODO: update this to keep only relevant entries
 
     varz[:usage][:bytes] = info['bytes']
     varz[:usage][:reserved_fds] = info['reserved_fds']
