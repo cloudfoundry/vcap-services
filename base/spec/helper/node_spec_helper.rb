@@ -65,6 +65,9 @@ class NodeTests
     def service_name
       SERVICE_NAME
     end
+    def nats=(mock_nats)
+      @node_nats = mock_nats
+    end
     def set_ready(r)
       @ready = r
     end
@@ -286,6 +289,9 @@ class NodeTests
     def announcement
       @announcement_invoked = true
       Hash.new
+    end
+    def nats=(mock_nats)
+      @node_nats = mock_nats
     end
     def provision(plan, credential)
       @provision_invoked = true
