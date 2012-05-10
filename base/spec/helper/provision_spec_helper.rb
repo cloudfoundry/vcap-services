@@ -22,10 +22,10 @@ class ProvisionerTests
     MockErrorNode.new(id, score)
   end
 
-  def self.setup_fake_instance(gateway, provisioner, node)
+  def self.setup_fake_instance(gateway, provisioner, node_id)
     instance_id = "fake_instance"
     gateway.instance_id = instance_id
-    provisioner.prov_svcs[instance_id] = {:credentials => {'node_id' =>node.node_id }}
+    provisioner.prov_svcs[instance_id] = {:credentials => {'node_id' => node_id }}
   end
 
   class ProvisionerTester < VCAP::Services::Base::Provisioner
@@ -40,6 +40,12 @@ class ProvisionerTests
       super(options)
       @varz_invoked = false
       @healthz_invoked = false
+    end
+    def set_nats(mock_nats)
+      @node_nats = mock_nats
+    end
+    def set_nodes(mock_nodes)
+      @nodes = mock_nodes
     end
     SERVICE_NAME = "Test"
     def service_name
