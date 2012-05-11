@@ -1,0 +1,11 @@
+Script started on Wed 09 May 2012 09:39:25 PM MDT
+  ENABLE_MONGODB="yes"
+  if [ -f /etc/default/mongodb ]; then . /etc/default/mongodb; fi
+  if [ "x$ENABLE_MONGODB" = "xyes" ]; then exec start-stop-daemon --start --quiet --chuid vcap --exec /usr/bin/mongod -- --config /etc/mongodb.conf; fi
+end script]0;cliffwang@Dev31-JumpBox: /repo/vcap-services.gitcliffwang@Dev31-JumpBox:/repo/vcap-services.git$   ENABLE_MONGODB="yes"
+]0;cliffwang@Dev31-JumpBox: /repo/vcap-services.gitcliffwang@Dev31-JumpBox:/repo/vcap-services.git$   if [ -f /etc/default/mongodb ]; then . /etc/default/mongodb; fi
+]0;cliffwang@Dev31-JumpBox: /repo/vcap-services.gitcliffwang@Dev31-JumpBox:/repo/vcap-services.git$   if [ "x$ENABLE_MONGODB" = "xyes" ]; then exec start-stop-daemon --start --quiet --chuid vcap --exec /usr/bin/mongod -- --config /etc/mongodb.conf; fi
+start-stop-daemon: user 'vcap' not found
+
+
+Script done on Wed 09 May 2012 09:39:25 PM MDT
