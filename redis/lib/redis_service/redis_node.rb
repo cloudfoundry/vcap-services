@@ -31,6 +31,7 @@ class VCAP::Services::Redis::Node
   include VCAP::Services::Redis::Common
   include VCAP::Services::Redis::Util
   include VCAP::Services::Redis
+  include VCAP::Services::Base::Utils
 
   def initialize(options)
     super(options)
@@ -77,11 +78,12 @@ class VCAP::Services::Redis::Node
           next
         end
 
-        unless instance.image_mounted?
+        unless instance.loop_setup?
           @logger.warn("Service #{instance.name} mounting data file")
-          cmd = "mount -n -o loop #{instance.image_file} #{instance.base_dir}"
-          o, e, s = Open3.capture3(cmd)
-          raise RedisError.new(RedisError::REDIS_RUN_SYSTEM_COMMAND_FAILED, cmd, o, e) if s.exitstatus != 0
+          sh "mount -n -o loop #{instance.image_file} #{instance.base_dir}"
+          # cmd = "mount -n -o loop #{instance.image_file} #{instance.base_dir}"
+          # o, e, s = Open3.capture3(cmd)
+          # raise RedisError.new(RedisError::REDIS_RUN_SYSTEM_COMMAND_FAILED, cmd, o, e) if s.exitstatus != 0
         end
 
         begin
@@ -355,6 +357,8 @@ class VCAP::Services::Redis::Node::ProvisionedService
 
   include DataMapper::Resource
   include VCAP::Services::Redis
+  include VCAP::Services::Base::Utils
+  include VCAP::Services::Base::Warden
 
   property :name,       String,   :key => true
   property :port,       Integer,  :unique => true
@@ -416,28 +420,17 @@ class VCAP::Services::Redis::Node::ProvisionedService
       config_template = ERB.new(File.read(@@options[:config_template]))
       config = config_template.result(Kernel.binding)
       config_path = File.join(instance.base_dir, "redis.conf")
-      begin
-        Open3.capture3("umount #{instance.base_dir}") if File.exist?(instance.base_dir)
-      rescue => e
-      end
+
+      self.class.sh "umount #{instance.base_dir}", :raise => false if File.exist?(instance.base_dir)
+
       FileUtils.rm_rf(instance.base_dir)
       FileUtils.rm_rf(instance.log_dir)
       FileUtils.rm_rf(instance.image_file)
       FileUtils.mkdir_p(instance.base_dir)
       # Mount base directory to loop device for disk size limitation
-      if db_size == nil
-        cmd = "dd if=/dev/null of=#{instance.image_file} bs=1M seek=#{@@options[:max_db_size]}"
-      else
-        cmd = "dd if=/dev/null of=#{instance.image_file} bs=1M seek=#{db_size}"
-      end
-      o, e, s = Open3.capture3(cmd)
-      raise RedisError.new(RedisError::REDIS_RUN_SYSTEM_COMMAND_FAILED, cmd, o, e) if s.exitstatus != 0
-      cmd = "mkfs.ext4 -q -F -O \"^has_journal,uninit_bg\" #{instance.image_file}"
-      o, e, s = Open3.capture3(cmd)
-      raise RedisError.new(RedisError::REDIS_RUN_SYSTEM_COMMAND_FAILED, cmd, o, e) if s.exitstatus != 0
-      cmd = "mount -n -o loop #{instance.image_file} #{instance.base_dir}"
-      o, e, s = Open3.capture3(cmd)
-      raise RedisError.new(RedisError::REDIS_RUN_SYSTEM_COMMAND_FAILED, cmd, o, e) if s.exitstatus != 0
+      db_size = db_size || @@options[:max_db_size]
+      instance.loop_create(db_size)
+      instance.loop_setup
       FileUtils.mkdir_p(instance.data_dir)
       FileUtils.mkdir_p(instance.log_dir)
       if db_file
@@ -452,9 +445,7 @@ class VCAP::Services::Redis::Node::ProvisionedService
     # stop container
     stop if running?
     # delete log and service directory
-    cmd = "umount #{base_dir}"
-    o, e, s = Open3.capture3(cmd)
-    raise RedisError.new(RedisError::REDIS_RUN_SYSTEM_COMMAND_FAILED, cmd, o, e) if s.exitstatus != 0
+    loop_setdown
     FileUtils.rm_rf(base_dir)
     FileUtils.rm_rf(log_dir)
     FileUtils.rm_rf(image_file)
@@ -463,67 +454,24 @@ class VCAP::Services::Redis::Node::ProvisionedService
   end
 
   def running?
-    if (self[:container] == "")
-      return false
-    else
-      @@warden_lock.synchronize do
-        @@warden_client.call(["info", self[:container]])
-      end
-      return true
-    end
-  rescue => e
-    return false
+    container_running?(self[:container])
   end
 
   def stop
-    unmapping_port(self[:ip], self[:port])
-    @@warden_lock.synchronize do
-      @@warden_client.call(["stop", self[:container]])
-      @@warden_client.call(["destroy", self[:container]])
-    end
+    unmap_port(self[:port], self[:ip], @@options[:instance_port])
+    container_stop(self[:container])
     self[:container] = ""
     save
     true
   end
 
   def run
-    @@warden_lock.synchronize do
-      req = ["create", {"bind_mounts" => [[base_dir, @@options[:instance_base_dir], {"mode" => "rw"}], [log_dir, @@options[:instance_log_dir], {"mode" => "rw"}]]}]
-      self[:container] = @@warden_client.call(req)
-      req = ["info", self[:container]]
-      info = @@warden_client.call(req)
-      self[:ip] = info["container_ip"]
-    end
+    self[:container], self[:ip] = container_start("redis_startup.sh",
+                                                  [[base_dir, @@options[:instance_base_dir], {"mode" => "rw"}], 
+                                                   [log_dir, @@options[:instance_log_dir], {"mode" => "rw"}]])
     save!
-    mapping_port(self[:ip], self[:port])
+    map_port(self[:port], self[:ip], @@options[:instance_port])
     true
-  end
-
-  def mapping_port(ip, port)
-    rule = [ "--protocol tcp",
-             "--dport #{port}",
-             "--jump DNAT",
-             "--to-destination #{ip}:#{@@options[:instance_port]}" ]
-    cmd = "iptables -t nat -A PREROUTING #{rule.join(" ")}"
-    retry_system_command(cmd)
-  end
-
-  def unmapping_port(ip, port)
-    rule = [ "--protocol tcp",
-             "--dport #{port}",
-             "--jump DNAT",
-             "--to-destination #{ip}:#{@@options[:instance_port]}" ]
-    cmd = "iptables -t nat -D PREROUTING #{rule.join(" ")}"
-    retry_system_command(cmd)
-  end
-
-  def retry_system_command(cmd)
-    for i in 1..@@sysytem_command_retry_count do
-      o, e, s = Open3.capture3(cmd)
-      return if s.exitstatus == 0
-      raise RedisError.new(RedisError::REDIS_RUN_SYSTEM_COMMAND_FAILED, cmd, o, e) if i == @@sysytem_command_retry_count
-      sleep 0.1
-    end
   end
 
   # diretory helper
@@ -545,18 +493,5 @@ class VCAP::Services::Redis::Node::ProvisionedService
 
   def image_file
      File.join(@@options[:image_dir], "#{self[:name]}.img")
-  end
-
-  def image_mounted?
-    mounted = false
-    File.open("/proc/mounts", mode="r") do |f|
-      f.each do |w|
-        if Regexp.new(base_dir) =~ w
-          mounted = true
-          break
-        end
-      end
-    end
-    mounted
   end
 end
