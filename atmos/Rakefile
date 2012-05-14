@@ -1,3 +1,5 @@
+# for jenkins test r12
+
 require 'rake'
 
 desc "Run specs"
