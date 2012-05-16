@@ -1,0 +1,45 @@
+#!/bin/bash
+# original from:
+# http://www.elasticsearch.org/tutorials/2010/07/02/setting-up-elasticsearch-on-debian.html
+ES_HOME=<%=home_dir%>
+DAEMON=$ES_HOME/bin/elasticsearch
+NAME=elasticsearch
+PID_FILE=$ES_HOME/$NAME.pid
+DAEMON_OPTS="-p $PID_FILE"
+export ES_HEAP_SIZE="<%=memory%>m"
+
+test -x $DAEMON || exit 0
+
+set -e
+
+case "$1" in
+  start)
+    echo -n "Starting $NAME: "
+    if start-stop-daemon --start --pidfile $PID_FILE --startas $DAEMON -- $DAEMON_OPTS
+    then
+        echo "started."
+    else
+        echo "failed."
+    fi
+    ;;
+  stop)
+    echo -n "Stopping $NAME: "
+    if start-stop-daemon --stop --pidfile $PID_FILE
+    then
+        echo "stopped."
+    else
+        echo "failed."
+    fi
+    ;;
+  restart|force-reload)
+    ${0} stop
+    sleep 0.5
+    ${0} start
+    ;;
+  *)
+    echo "Usage: $0 start|stop|restart|force-reload}" >&2
+    exit 1
+    ;;
+esac
+
+exit 0

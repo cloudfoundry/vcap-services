@@ -1,0 +1,11 @@
+node.name: <%=name%>
+discovery.zen.ping.multicast.enabled: false
+index:
+  number_of_shards: 1
+  number_of_replicas: 0
+http:
+  port: <%=port%>
+  basic:
+    enabled: true
+    user: <%=username%>
+    password: <%=password%>
