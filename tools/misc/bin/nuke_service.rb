@@ -32,6 +32,7 @@ default_configs = {
   :redis   => File.expand_path("../../redis/config/redis_gateway.yml", __FILE__),
   :mysql   => File.expand_path("../../mysql/config/mysql_gateway.yml", __FILE__),
   :neo4j   => File.expand_path("../../neo4j/config/neo4j_gateway.yml", __FILE__),
+  :echo    => File.expand_path("../../echo/config/echo_gateway.yml", __FILE__),
 }
 
 OptionParser.new do |opts|
