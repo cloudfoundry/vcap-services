@@ -1,0 +1,14 @@
+---
+plan: free 
+capacity: 100
+local_db: sqlite3:/var/vcap/services/echo/echo_node.db
+#TODO: nats won't listen on localhost by default.
+#mbus: nats://localhost:4222
+mbus: nats://nats:nats@192.168.202.128:4222
+index: 0
+base_dir: /var/vcap/services/echo/
+logging:
+  level: debug
+pid: /var/vcap/sys/run/echo_node.pid
+node_id: echo_node_1
+port: 5002
