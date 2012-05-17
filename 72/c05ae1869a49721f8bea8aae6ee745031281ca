@@ -1,0 +1,7 @@
+Code-Review+2: Figo Feng <ffeng@vmware.com>
+Verified+1: Figo Feng <ffeng@vmware.com>
+Submitted-by: Jeff Li <jeffli@rbcon.com>
+Submitted-at: Thu, 17 May 2012 08:08:30 +0000
+Reviewed-on: http://reviews.cloudfoundry.org/5650
+Project: vcap-services
+Branch: refs/heads/echo_service
