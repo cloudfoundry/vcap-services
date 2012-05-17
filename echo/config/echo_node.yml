@@ -1,0 +1,13 @@
+---
+capacity: 100
+local_db: sqlite3:/var/vcap/services/echo/echo_node.db
+mbus: nats://nats:nats@192.168.202.134:4222
+index: 0
+base_dir: /var/vcap/services/echo/
+ip_route: 127.0.0.1
+logging:
+  level: debug
+pid: /var/vcap/sys/run/echo_node.pid
+node_id: echo_node_1
+port: 5002
+host: 127.0.1.1
