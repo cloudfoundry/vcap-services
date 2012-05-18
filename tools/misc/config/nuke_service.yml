@@ -1,0 +1,7 @@
+---
+cloud_controller_uri: http://api.vcap.me
+token: 0xdeadbeef
+service:
+  name: postgresql
+  description: simple test key-value app
+  version: "9.0"
