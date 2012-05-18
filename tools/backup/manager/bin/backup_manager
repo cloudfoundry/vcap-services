@@ -67,7 +67,13 @@ options = {
   :rotation => rotation,
   :mbus => parse_property(config, "mbus", String),
   :z_interval => parse_property(config, "z_interval", Integer, :optional => true) || DEFAULT_Z_INTERVAL,
+<<<<<<< HEAD
   :enable => parse_property(config, "enable", Object, :optional => true) || false
+=======
+  :enable => parse_property(config, "enable", Object, :optional => true) || false,
+  :target => "backups",
+  :service_name => "BackupManager"
+>>>>>>> origin/services-r11
 }
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), "..", "lib")

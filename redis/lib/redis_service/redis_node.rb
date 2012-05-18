@@ -220,6 +220,14 @@ class VCAP::Services::Redis::Node
   end
 
   def enable_instance(service_credentials, binding_credentials_map = {})
+    set_config(service_credentials["port"], @disable_password, "requirepass", service_credentials["password"])
+    true
+  rescue => e
+    @logger.warn(e)
+    nil
+  end
+
+  def update_instance(service_credentials, binding_credentials_map = {})
     instance = get_instance(service_credentials["name"])
     set_config(instance.ip, @redis_port, @disable_password, "requirepass", instance.password)
     true
