@@ -79,8 +79,8 @@ if config_file
   end
 
   label ||= "#{config[:service][:name]}-#{config[:service][:version]}"
-  token ||= config[:token]
-  cld_ctrl_uri ||= "http://#{config[:cloud_controller][:host]}:#{config[:cloud_controller][:port]}"
+  token ||= config[:token].to_s
+  cld_ctrl_uri ||= config[:cloud_controller_uri]
 end
 
 missing = {}
