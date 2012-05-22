@@ -177,5 +177,5 @@ DEPENDENCIES
   thin
   uuidtools
   vcap_common (>= 1.0.8)
-  vcap_logging (>= 0.1.3)
+  vcap_logging (>= 1.0.0)
   vcap_services_base
