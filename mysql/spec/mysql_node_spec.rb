@@ -44,7 +44,7 @@ describe "Mysql server node" do
 
   before :each do
     @default_plan = "free"
-    @default_opts = "default"
+    @default_opts = {}
     @test_dbs = {}# for cleanup
     # Create one db be default
     @db = @node.provision(@default_plan)
@@ -278,14 +278,24 @@ describe "Mysql server node" do
         node = VCAP::Services::Mysql::Node.new(opts)
         EM.add_timer(1) do
           conn = connect_to_mysql(@db)
+          sys_app_bind_opts = @default_opts.dup
+          sys_app_bind_opts['verified_vcap_sys_app'] = 'caldecott'
+          sys_app_binding = @node.bind(@db['name'], sys_app_bind_opts)
+          sys_app_conn = connect_to_mysql(sys_app_binding)
           # prepare a transaction and not commit
           conn.query("create table a(id int) engine=innodb")
           conn.query("insert into a value(10)")
           conn.query("begin")
           conn.query("select * from a for update")
+          sys_app_conn.query("create table b(id int) engine=innodb")
+          sys_app_conn.query("insert into b value(10)")
+          sys_app_conn.query("begin")
+          sys_app_conn.query("select * from b for update")
           EM.add_timer(opts[:max_long_tx] * 5) {
             expect {conn.query("select * from a for update")}.should raise_error(Mysql2::Error)
-            conn.close
+            conn.close if conn
+            expect {sys_app_conn.query("select * from b for update")}.should raise_error(Mysql2::Error)
+            sys_app_conn.close if sys_app_conn
             EM.stop
           }
         end
@@ -392,7 +402,6 @@ describe "Mysql server node" do
 
   it "should delete all bindings if service is unprovisioned" do
     EM.run do
-      @default_opts = "default"
       bindings = []
       3.times { bindings << @node.bind(@db["name"], @default_opts)}
       @test_dbs[@db] = bindings
@@ -631,7 +640,7 @@ describe "Mysql server node" do
     EM.run do
       v1 = @node.varz_details
       db = @node.provision(@default_plan)
-      binding = @node.bind(db["name"], [])
+      binding = @node.bind(db["name"], @default_opts)
       @test_dbs[db] = [binding]
       v2 = @node.varz_details
       (v2[:provision_served] - v1[:provision_served]).should == 1

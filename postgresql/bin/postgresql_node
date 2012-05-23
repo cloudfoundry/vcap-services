@@ -27,6 +27,7 @@ class VCAP::Services::Postgresql::NodeBin < VCAP::Services::Base::NodeBin
     options[:max_db_conns] = parse_property(config, "max_db_conns", Integer)
     options[:restore_bin] = parse_property(config, "restore_bin", String)
     options[:dump_bin] = parse_property(config, "dump_bin", String)
+    options[:sys_app_word] = parse_property(config, "sys_app_word", String)
     options
   end
 
