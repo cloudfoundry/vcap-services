@@ -46,7 +46,7 @@ describe "Postgresql node normal cases" do
 
   before :each do
     @default_plan = "free"
-    @default_opts = "default"
+    @default_opts = {}
     @test_dbs = {}# for cleanup
     # Create one db be default
     @db = @node.provision(@default_plan)
@@ -341,54 +341,75 @@ describe "Postgresql node normal cases" do
         user = db.dup
         user['user'] = opts[:postgresql]['user']
         user['password'] = opts[:postgresql]['pass']
-        conn = connect_to_postgresql(user)
+        super_conn = connect_to_postgresql(user)
         # prepare a transaction and not commit
-        conn.query("create table a(id int)")
-        conn.query("insert into a values(10)")
-        conn.query("begin")
-        conn.query("select * from a for update")
+        super_conn.query("create table a(id int)")
+        super_conn.query("insert into a values(10)")
+        super_conn.query("begin")
+        super_conn.query("select * from a for update")
         EM.add_timer(opts[:max_long_tx] * 2) {
           expect do
-            conn.query("select * from a for update")
-            conn.query("commit")
+            super_conn.query("select * from a for update")
+            super_conn.query("commit")
           end.should_not raise_error
-          conn.close if conn
+          super_conn.close if super_conn
         }
 
         # use a default user (parent role), won't be killed
         default_user = VCAP::Services::Postgresql::Node::Provisionedservice.get(db['name']).bindusers.all(:default_user => true)[0]
         user['user'] = default_user[:user]
         user['password'] = default_user[:password]
-        conn = connect_to_postgresql(user)
+        default_conn = connect_to_postgresql(user)
         # prepare a transaction and not commit
-        conn.query("create table b(id int)")
-        conn.query("insert into b values(10)")
-        conn.query("begin")
-        conn.query("select * from b for update")
+        default_conn.query("create table b(id int)")
+        default_conn.query("insert into b values(10)")
+        default_conn.query("begin")
+        default_conn.query("select * from b for update")
         EM.add_timer(opts[:max_long_tx] * 2) {
           expect do
-            conn.query("select * from b for update")
-            conn.query("commit")
+            default_conn.query("select * from b for update")
+            default_conn.query("commit")
           end.should_not raise_error
-          conn.close if conn
+          default_conn.close if default_conn
         }
 
 
-        # use a non-default user (not parent role), will be killed
+        # use a non-default user (not parent role) of regular application, will be killed
         user = db.dup
         user['user'] = binding['user']
         user['password'] = binding['password']
-        conn = connect_to_postgresql(user)
+        normal_conn = connect_to_postgresql(user)
         # prepare a transaction and not commit
-        conn.query("create table c(id int)")
-        conn.query("insert into c values(10)")
-        conn.query("begin")
-        conn.query("select * from c for update")
+        normal_conn.query("create table c(id int)")
+        normal_conn.query("insert into c values(10)")
+        normal_conn.query("begin")
+        normal_conn.query("select * from c for update")
         EM.add_timer(opts[:max_long_tx] * 2) {
-          expect { conn.query("select * from c for update") }.should raise_error
-          conn.close if conn
+          expect do
+            normal_conn.query("select * from c for update")
+            normal_conn.query("commit")
+          end.should raise_error
+          normal_conn.close if normal_conn
         }
-        EM.stop
+
+        # use a non-default user (not parent role) of verified system application, won't be killed
+        sys_app_bind_opts = @default_opts.dup
+        sys_app_bind_opts["verified_vcap_sys_app"] = 'caldecott'
+        sys_app_binding = @node.bind(@db["name"], sys_app_bind_opts)
+        sys_app_conn = connect_to_postgresql(sys_app_binding)
+        @test_dbs[@db] << sys_app_binding
+        sys_app_conn.query("create table d(id int)")
+        sys_app_conn.query("insert into d values(10)")
+        sys_app_conn.query("begin")
+        sys_app_conn.query("select * from d for update")
+        EM.add_timer(opts[:max_long_tx] * 3) {
+          expect do
+            sys_app_conn.query("select * from d for update")
+            sys_app_conn.query("commit")
+          end.should_not raise_error
+          sys_app_conn.close if sys_app_conn
+          EM.stop
+        }
       end
     end
   end
@@ -439,7 +460,6 @@ describe "Postgresql node normal cases" do
 
   it "should delete all bindings if service is unprovisioned" do
     EM.run do
-      @default_opts = "default"
       bindings = []
       3.times {bindings << @node.bind(@db["name"], @default_opts)}
       @test_dbs[@db] = bindings
@@ -469,7 +489,7 @@ describe "Postgresql node normal cases" do
     EM.run do
       v1 = @node.varz_details
       db = @node.provision(@default_plan)
-      binding = @node.bind(db["name"], [])
+      binding = @node.bind(db["name"], @default_opts)
       @test_dbs[db] = [binding]
       v2 = @node.varz_details
       (v2[:provision_served] - v1[:provision_served]).should == 1
