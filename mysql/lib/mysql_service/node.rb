@@ -65,6 +65,8 @@ class VCAP::Services::Mysql::Node
     @statistics_lock = Mutex.new
     @provision_served = 0
     @binding_served = 0
+    @sys_app_word = (options[:sys_app_word] || "saw").slice(0..2) # at least 3 characters in [0..9][a..z]
+    @sys_app_word = "saw" if @sys_app_word.size == 0
 
     #locks
     @kill_long_queries_lock = Mutex.new
@@ -202,6 +204,10 @@ class VCAP::Services::Mysql::Node
     exit
   end
 
+  def is_sys_app_bind_user(user_name)
+    !user_name.nil? && user_name =~ /^u.{12}#{@sys_app_word}$/
+  end
+
   def kill_long_queries
     acquired = @kill_long_queries_lock.try_lock
     return unless acquired
@@ -209,7 +215,7 @@ class VCAP::Services::Mysql::Node
       process_list = connection.query("show processlist")
       process_list.each do |proc|
         thread_id, user, db, command, time, info, state = %w(Id User db Command Time Info State).map{|o| proc[o]}
-        if (time.to_i >= @max_long_query) and (command == 'Query') and (user != 'root') then
+        if (time.to_i >= @max_long_query) and (command == 'Query') and (user != 'root') and (!is_sys_app_bind_user(user)) then
           connection.query("KILL QUERY #{thread_id}")
           @logger.warn("Killed long query: user:#{user} db:#{db} time:#{time} state: #{state} info:#{info}")
           @long_queries_killed += 1
@@ -236,9 +242,11 @@ class VCAP::Services::Mysql::Node
       result = connection.query(query_str)
       result.each do |trx|
         trx_started, id, user, db, info, active_time = %w(trx_started id user db info active_time).map{|o| trx[o]}
-        connection.query("KILL QUERY #{id}")
-        @logger.warn("Kill long transaction: user:#{user} db:#{db} thread:#{id} info:#{info} active_time:#{active_time}")
-        @long_tx_killed += 1
+        unless is_sys_app_bind_user(user)
+          connection.query("KILL QUERY #{id}")
+          @logger.warn("Kill long transaction: user:#{user} db:#{db} thread:#{id} info:#{info} active_time:#{active_time}")
+          @long_tx_killed += 1
+        end
       end
     end
   rescue => e
@@ -316,6 +324,9 @@ class VCAP::Services::Mysql::Node
         binding[:password] = credential["password"]
       else
         binding[:user] = 'u' + generate_credential
+        unless bind_opts.nil? || bind_opts["verified_vcap_sys_app"].nil?
+          binding[:user] = binding[:user] + @sys_app_word
+        end
         binding[:password] = 'p' + generate_credential
       end
       binding[:bind_opts] = bind_opts

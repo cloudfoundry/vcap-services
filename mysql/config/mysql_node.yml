@@ -18,6 +18,7 @@ max_long_query: 3
 max_long_tx: 30
 max_user_conns: 20
 migration_nfs: /mnt/migration
+sys_app_word: saw
 mysql:
   host: localhost
   port: 3306

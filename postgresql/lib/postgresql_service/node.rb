@@ -50,6 +50,8 @@ class VCAP::Services::Postgresql::Node
     @long_tx_killed = 0
     @provision_served = 0
     @binding_served = 0
+    @sys_app_word = (options[:sys_app_word] || "fooword").slice(0..15) # at least 16 characters in [0..9][a..z]
+    @sys_app_word = "fooword" if @sys_app_word.size == 0
   end
 
   def pre_send_announcement
@@ -291,13 +293,17 @@ class VCAP::Services::Postgresql::Node
     !user.nil? && user.default_user
   end
 
+  def is_sys_app_bind_user(user_name)
+     !user_name.nil? && user_name =~ /^s?u.{32}#{@sys_app_word}$/
+  end
+
   def kill_long_queries
     # (extract(epoch from current_timestamp) - extract(epoch from query_start)) as runtime
     # Notice: we should use current_timestamp or timeofday, the difference is that the current_timestamp only executed once at the beginning of the transaction, while dayoftime will return a text string of wall-clock time and advances during the transaction
     # Filtering the long queries in the pg statement is better than filtering using the iteration of ruby after select all activties
     process_list = @connection.query("select * from (select procpid, datname, query_start, usename, (extract(epoch from current_timestamp) - extract(epoch from query_start)) as run_time from pg_stat_activity where query_start is not NULL and usename != '#{@postgresql_config['user']}' and current_query !='<IDLE>') as inner_table  where run_time > #{@max_long_query}")
     process_list.each do |proc|
-      unless is_default_bind_user(proc["usename"])
+      unless is_default_bind_user(proc["usename"]) || is_sys_app_bind_user(proc["usename"])
         @connection.query("select pg_terminate_backend(#{proc['procpid']})")
         @logger.info("Killed long query: user:#{proc['usename']} db:#{proc['datname']} time:#{Time.now.to_i - Time::parse(proc['query_start']).to_i} info:#{proc['current_query']}")
         @long_queries_killed += 1
@@ -311,7 +317,7 @@ class VCAP::Services::Postgresql::Node
     # see kill_long_queries
     process_list = @connection.query("select * from (select procpid, datname, xact_start, usename, (extract(epoch from current_timestamp) - extract(epoch from xact_start)) as run_time from pg_stat_activity where xact_start is not NULL and usename != '#{@postgresql_config['user']}') as inner_table where run_time > #{@max_long_tx}")
     process_list.each do |proc|
-      unless is_default_bind_user(proc["usename"])
+      unless is_default_bind_user(proc["usename"]) || is_sys_app_bind_user(proc["usename"])
         @connection.query("select pg_terminate_backend(#{proc['procpid']})")
         @logger.info("Killed long transaction: user:#{proc['usename']} db:#{proc['datname']} active_time:#{Time.now.to_i - Time::parse(proc['xact_start']).to_i}")
         @long_tx_killed += 1
@@ -319,6 +325,27 @@ class VCAP::Services::Postgresql::Node
     end
   rescue PGError => e
     @logger.warn("PostgreSQL error: #{e}")
+  end
+
+  def gen_uuid(prefix)
+    "#{prefix}-#{UUIDTools::UUID.random_create.to_s}"
+  end
+
+  def gen_database_name(prefix='d')
+    gen_uuid(prefix).gsub(/-/, '')
+  end
+
+  def gen_binduser_name(prefix='u', binding_options=nil)
+    username = gen_uuid(prefix)
+    unless binding_options.nil? || binding_options["verified_vcap_sys_app"].nil?
+      "#{username}-#{@sys_app_word}".gsub(/-/, '')
+    else
+      username.gsub(/-/, '')
+    end
+  end
+
+  def gen_binduser_password(prefix='p')
+    gen_uuid(prefix).gsub(/-/, '')
   end
 
   def provision(plan, credential=nil)
@@ -336,12 +363,17 @@ class VCAP::Services::Postgresql::Node
         binduser.user = user
         binduser.password = password
       else
-        provisionedservice.name = "d-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
-        binduser.user = "u-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
-        binduser.password = "p-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+        #provisionedservice.name = "d-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+        #binduser.user = "u-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+        #binduser.password = "p-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+        provisionedservice.name = gen_database_name()
+        binduser.user = gen_binduser_name()
+        binduser.password = gen_binduser_password()
       end
-      binduser.sys_user = "su-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
-      binduser.sys_password = "sp-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+      #binduser.sys_user = "su-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+      #binduser.sys_password = "sp-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+      binduser.sys_user = gen_binduser_name('su')
+      binduser.sys_password = gen_binduser_password('sp')
       binduser.default_user = true
       provisionedservice.quota_exceeded = false
       provisionedservice.bindusers << binduser
@@ -405,11 +437,16 @@ class VCAP::Services::Postgresql::Node
         new_user = credential["user"]
         new_password = credential["password"]
       else
-        new_user = "u-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
-        new_password = "p-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+        #new_user = "u-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+        #new_password = "p-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+        new_user = gen_binduser_name('u', bind_opts)
+        new_password = gen_binduser_password()
       end
-      new_sys_user = "su-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
-      new_sys_password = "sp-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+      #new_sys_user = "su-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+      #new_sys_password = "sp-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+      new_sys_user = gen_binduser_name('su', bind_opts)
+      new_sys_password = gen_binduser_password()
+
       binduser = Binduser.new
       binduser.user = new_user
       binduser.password = new_password
