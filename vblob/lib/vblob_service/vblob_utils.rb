@@ -5,30 +5,22 @@ module VCAP
     module VBlob
       module Utils
 
-        def service_dir(service_id)
-          File.join(@base_dir, service_id)
-        end
+        include VCAP::Services::Base::Warden
 
-        def log_dir(instance_id)
-          File.join(@vblobd_log_dir,instance_id)
-        end
+        VBLOB_TIMEOUT = 3
 
-        def log_file_vblob(instance_id)
-          File.join(log_dir(instance_id), 'vblob.log')
-        end
-
-        def service_exist?(provisioned_service)
-          Dir.exists?(service_dir(provisioned_service.name))
-        end
-
-        def vblob_dir(base_dir)
+        def data_dir
           File.join(base_dir,'vblob_data')
+        end
+
+        def data_dir?
+          Dir.exists?(data_dir)
         end
 
         def record_service_log(service_id)
           @logger.warn(" *** BEGIN vblob log - instance: #{service_id}")
           @logger.warn("")
-          file = File.new(log_file_vblob(service_id), 'r')
+          file = File.new(log_file_vblob, 'r')
           while (line = file.gets)
             @logger.warn(line.chomp!)
           end
