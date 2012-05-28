@@ -377,13 +377,13 @@ class VCAP::Services::Redis::Node::ProvisionedService
 
     def init(options)
       @@options = options
-      @@base_dir = options[:base_dir]
-      @@log_dir = options[:redis_log_dir]
-      @@image_dir = options[:image_dir]
-      @@max_db_size = options[:max_db_size]
-      FileUtils.mkdir_p(@@base_dir)
-      FileUtils.mkdir_p(@@log_dir)
-      FileUtils.mkdir_p(@@image_dir)
+      @base_dir = options[:base_dir]
+      @log_dir = options[:redis_log_dir]
+      @image_dir = options[:image_dir]
+      @max_db_size = options[:max_db_size]
+      FileUtils.mkdir_p(base_dir)
+      FileUtils.mkdir_p(log_dir)
+      FileUtils.mkdir_p(image_dir)
       DataMapper.setup(:default, options[:local_db])
       DataMapper::auto_upgrade!
     end
@@ -420,7 +420,7 @@ class VCAP::Services::Redis::Node::ProvisionedService
 
       if is_upgraded == false
         # Mount base directory to loop device for disk size limitation
-        db_size = db_size || @@max_db_size
+        db_size = db_size || max_db_size
         instance.loop_create(db_size)
         instance.loop_setup
         FileUtils.mkdir_p(instance.data_dir)

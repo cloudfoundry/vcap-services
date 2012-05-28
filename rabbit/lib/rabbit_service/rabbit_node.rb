@@ -418,10 +418,10 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
 
     def init(options)
       @@options = options
-      @@base_dir = options[:base_dir]
-      @@log_dir = options[:rabbitmq_log_dir]
-      @@image_dir = options[:image_dir]
-      @@max_db_size = options[:max_db_size]
+      @base_dir = options[:base_dir]
+      @log_dir = options[:rabbitmq_log_dir]
+      @image_dir = options[:image_dir]
+      @max_db_size = options[:max_db_size]
       FileUtils.mkdir_p(options[:base_dir])
       FileUtils.mkdir_p(options[:rabbitmq_log_dir])
       FileUtils.mkdir_p(options[:image_dir])
@@ -481,7 +481,7 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
       FileUtils.rm_rf(instance.log_dir)
       FileUtils.rm_rf(instance.image_file)
       FileUtils.mkdir_p(instance.base_dir)
-      instance.loop_create(@@options[:max_db_size])
+      instance.loop_create(max_db_size)
       instance.loop_setup
       FileUtils.mkdir_p(instance.config_dir)
       FileUtils.mkdir_p(instance.log_dir)
@@ -522,7 +522,7 @@ EOF
 
   # diretory helper
   def config_dir
-    File.join(@@base_dir, self[:name], "config")
+    File.join(base_dir, "config")
   end
 
 end
