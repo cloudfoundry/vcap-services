@@ -86,7 +86,6 @@ module VCAP::Services::Postgresql::Snapshot
       raise "Can't find snapshot file #{snapshot_file_path}" unless File.exists?(dump_file_name)
 
       host, port, vcap_user, vcap_pass = %w(host port user pass).map{ |k| @config["postgresql"][k]}
-
       # Need a user who is a superuser to disable db access and then kill all live sessions first
       reset_db(host, port, vcap_user, vcap_pass, name, service)
       # Import the dump file
@@ -94,6 +93,16 @@ module VCAP::Services::Postgresql::Snapshot
       parent_pass = default_user[:password]
       restore_bin = @config["restore_bin"]
       result = restore_database(name, host, port, parent_user, parent_pass, dump_file_name, { :restore_bin => restore_bin, :logger => @logger } )
+      if result
+        db_connection = postgresql_connect(host, vcap_user, vcap_pass, port, name, true)
+        raise "#{vcap_user} can't connect to database #{name} after snapshot #{snapshot_id} is rolled back" unless db_connection
+        if grant_write_access_internal(db_connection, service)
+          service.quota_exceeded = false
+          service.save
+        else
+          raise "Fail to grant write access after rolling back database #{name} using snapshot #{snapshot_id}"
+        end
+      end
       result
     end
 

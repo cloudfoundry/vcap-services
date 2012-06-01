@@ -73,18 +73,37 @@ describe "Postgresql node normal cases" do
       @test_dbs[tmp_db] = []
       conn = connect_to_postgresql(tmp_db)
       conn.query("create table test1(id int)")
+      conn.query("insert into test1 values(1)")
+      conn.query("create schema test_schema")
+      conn.query("create table test_schema.test1(id int)")
+      conn.query("insert into test_schema.test1 values(1)")
       host, port, user, password = %w(host port user pass).map{|key| @opts[:postgresql][key]}
       tmp_file = "/tmp/#{tmp_db['name']}.dump"
-      result = `pg_dump -Fc -h #{host} -p #{port} -U #{user} -f #{tmp_file} #{tmp_db['name']}`
+      result = `pg_dump -Fc -h #{host} -p #{port} -U #{tmp_db['user']} -f #{tmp_file} #{tmp_db['name']}`
       conn.query("drop table test1")
+      conn.query("drop table test_schema.test1")
       res = conn.query("select tablename from pg_catalog.pg_tables where schemaname = 'public';")
       res.count.should == 0
+      res = conn.query("select tablename from pg_catalog.pg_tables where schemaname = 'test_schema';")
+      res.count.should == 0
+
       conn.query("create table test2(id int)")
+      conn.query("create table test_schema.test2(id int)")
       @node.restore(tmp_db["name"], "/tmp").should == true
       conn = connect_to_postgresql(tmp_db)
       res = conn.query("select tablename from pg_catalog.pg_tables where schemaname = 'public';")
       res.count.should == 1
       res[0]["tablename"].should == "test1"
+      res = conn.query("select tablename from pg_catalog.pg_tables where schemaname = 'test_schema';")
+      res.count.should == 1
+      res[0]["tablename"].should == "test1"
+      res = conn.query("select id from test1")
+      res.count.should == 1
+      res = conn.query("select id from test_schema.test1")
+      res.count.should == 1
+      expect{ conn.query("create schema test_schmea2") }.should_not raise_error
+      expect { conn.query("create temporary table temp_data as select * from test_schema.test1") }.should_not raise_error
+
       FileUtils.rm_rf(tmp_file)
       EM.stop
     end
@@ -550,6 +569,9 @@ describe "Postgresql node normal cases" do
         EM.add_timer(2) do
           conn = connect_to_postgresql(binding)
           conn.query("create table test(data text)")
+          conn.query("create schema quota_schema")
+          conn.query("create table quota_schema.test(data text)")
+          conn.query("insert into quota_schema.test values('test_quota')")
           c =  [('a'..'z'),('A'..'Z')].map{|i| Array(i)}.flatten
           # prepare 1M data
           content = (0..1000000).map{ c[rand(c.size)] }.join
@@ -559,28 +581,38 @@ describe "Postgresql node normal cases" do
             # terminating connection due to administrator command
             expect { conn.query("select version()") }.should raise_error(PGError)
             conn.close if conn
-            conn = connect_to_postgresql(binding)
-            expect { conn.query("select version()") }.should_not raise_error
-            # permission denied for relation test
-            expect { conn.query("insert into test values('1')") }.should raise_error(PGError)
-            expect { conn.query("create table test1(data text)") }.should raise_error(PGError)
-            # temp privilege should be revoked
-            expect { conn.query("create temporary table test2 (data text) on commit delete rows") }.should raise_error(PGError)
-            expect { conn.query("drop temporary table temp_table") }.should raise_error(PGError)
-            new_binding = node.bind(db['name'], @default_opts)
-            new_conn = connect_to_postgresql(new_binding)
-            expect { new_conn.query("insert into test values('1')") }.should raise_error(PGError)
+            first_conn = connect_to_postgresql(binding)
+            expect { first_conn.query("select version()") }.should_not raise_error
+            second_binding = node.bind(db['name'], @default_opts)
+            second_conn = connect_to_postgresql(second_binding)
+            [first_conn, second_conn].each do |conn|
+              # write permission denied for relation test
+              expect { conn.query("select * from test limit 1") }.should_not raise_error(PGError)
+              expect { conn.query("insert into test values('1')") }.should raise_error(PGError)
+              expect { conn.query("create table test1(data text)") }.should raise_error(PGError)
+              expect { conn.query("select * from quota_schema.test limit 1") }.should_not raise_error(PGError)
+              expect { conn.query("insert into quota_schema.test values('2')") }.should raise_error(PGError)
+              expect { conn.query("create table quota_schema.test1(data text)") }.should raise_error(PGError)
+              expect { conn.query("create schema new_quota_schema") }.should raise_error(PGError)
 
-            conn.query("truncate test") # delete from won't reduce the db size immediately
+              # temp permission denied
+              expect { conn.query("create temporary table test2 (data text) on commit delete rows") }.should raise_error(PGError)
+              expect { conn.query("drop temporary table temp_table") }.should raise_error(PGError)
+            end
+
+            first_conn.query("truncate test") # delete from won't reduce the db size immediately
             EM.add_timer(2) do
-              # write privilege should restore
-              expect { conn.query("insert into test values('1')") }.should_not raise_error
-              expect { conn.query("create table test1(data text)") }.should_not raise_error
+              # write privilege should be restored
+              expect { first_conn.query("insert into test values('1')") }.should_not raise_error
+              expect { first_conn.query("create table test1(data text)") }.should_not raise_error
+              expect { first_conn.query("insert into quota_schema.test values(1)")}.should_not raise_error
+              expect { first_conn.query("create table quota_schema.test1(data text)") }.should_not raise_error
+              expect { first_conn.query("create schema new_quota_schema") }.should_not raise_error
               # temp privilege should be restored
-              expect { conn.query("create temporary table test2 (data text) on commit delete rows") }.should_not raise_error
-              expect { conn.query("drop temporary table temp_table") }.should raise_error
-              conn.close if conn
-              new_conn.close if new_conn
+              expect { first_conn.query("create temporary table test2 (data text) on commit delete rows") }.should_not raise_error
+              expect { first_conn.query("drop temporary table temp_table") }.should raise_error
+              first_conn.close if first_conn
+              second_conn.close if second_conn
               EM.stop
             end
           end
@@ -600,8 +632,8 @@ describe "Postgresql node normal cases" do
       @node.unprovision(db['name'], [])
       # we can now simulate the quota-enforcer checking an
       # unprovisioned instance
-      expect { @node.revoke_write_access(db, service) }.should_not raise_error
-      expect { @node.grant_write_access(db, service) }.should_not raise_error
+      expect { @node.revoke_write_access(db['name'], service) }.should_not raise_error
+      expect { @node.grant_write_access(db['name'], service) }.should_not raise_error
       # actually, the bug was not that these methods raised
       # exceptions, but rather that they called Kernel.exit.  so the
       # real proof that we've fixed the bug is that this test finishes
@@ -721,6 +753,51 @@ describe "Postgresql node normal cases" do
       @db['password'] = parent.password
       EM.stop
     end
+  end
+
+  it "should be able to migrate(grant create privilege) legacy instances" do
+    EM.run do
+      parent = @db['user']
+      parent_password = @db['password']
+      user1 = @node.bind(@db['name'], @default_opts)
+
+      @db['user'] = @opts[:postgresql]['user']
+      @db['password'] = @opts[:postgresql]['pass']
+      sys_conn = connect_to_postgresql @db
+
+      sys_conn.query "revoke create on database #{@db['name']} from #{parent}"
+      sys_conn.close if sys_conn
+
+      # reset @db
+      @db['user'] = parent
+      @db['password'] = parent_password
+
+      # connect to the db and fail to create schema
+      parent_conn = connect_to_postgresql @db
+      expect { parent_conn.query('create schema parent_schema') }. should raise_error(PGError)
+      parent_conn.close if parent_conn
+
+      user1_conn = connect_to_postgresql user1
+      expect { user1_conn.query('create schema user1_schema') }.should raise_error(PGError)
+      user1_conn.close if user1_conn
+
+      # create a new node to migrate
+      node = VCAP::Services::Postgresql::Node.new(@opts)
+      sleep 1
+      EM.add_timer(0.1) {
+        user1_conn = connect_to_postgresql user1
+        expect { user1_conn.query('create schema user1_schema') }.should_not raise_error(PGError)
+        expect { user1_conn.query('create table user1_schema.user1_table (value text)') }.should_not raise_error(PGError)
+        user1_conn.close if user1_conn
+        user2 = @node.bind(@db['name'], @default_opts)
+        user2_conn = connect_to_postgresql user2
+        expect { user2_conn.query('select * from user1_schema.user1_table') }.should_not raise_error(PGError)
+        expect { user2_conn.query("insert into user1_schema.user1_table values('hello')") }.should_not raise_error(PGError)
+        user2_conn.close if user2_conn
+        EM.stop
+      }
+    end
+
   end
 
    it "should be able to migrate(grant temp privilege) legacy instances" do
@@ -884,6 +961,9 @@ describe "Postgresql node normal cases" do
         EM.add_timer(2) do
           conn = connect_to_postgresql(binding)
           conn.query("create table test(data text)")
+          conn.query("create schema new_schema")
+          conn.query("create table new_schema.test(data text)")
+          conn.query("insert into new_schema.test values('1')")
           c =  [('a'..'z'),('A'..'Z')].map{|i| Array(i)}.flatten
           # prepare 1M data
           content = (0..1000000).map{ c[rand(c.size)] }.join
@@ -897,16 +977,22 @@ describe "Postgresql node normal cases" do
             # permission denied for relation test
             expect { conn.query("insert into test values('1')") }.should raise_error(PGError)
             expect { conn.query("create table test1(data text)") }.should raise_error(PGError)
+            expect { conn.query("insert into new_schema.test values('1')") }.should raise_error(PGError)
+            expect { conn.query("create schema another_schema") }.should raise_error(PGError)
             # user2 deletes data
             binding_2 = node.bind(db['name'], @default_opts)
             conn2 = connect_to_postgresql(binding_2)
             conn2.query("truncate test")
             EM.add_timer(2) do
-              # write privilege should restore
+              # write privilege should be restored
               expect { conn.query("insert into test values('1')") }.should_not raise_error
               expect { conn.query("create table test1(data text)") }.should_not raise_error
+              expect { conn.query("insert into new_schema.test values('1')") }.should_not raise_error
+              expect { conn.query("create schema another_schema") }.should_not raise_error
               expect { conn2.query("insert into test values('1')") }.should_not raise_error
               expect { conn2.query("create table test2(data text)") }.should_not raise_error
+              expect { conn2.query("insert into new_schema.test values('1')") }.should_not raise_error
+              expect { conn2.query("create schema another_schema2") }.should_not raise_error
               conn.close if conn
               conn2.close if conn2
               EM.stop
