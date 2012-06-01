@@ -48,7 +48,6 @@ module VCAP
           Array.new(length) { VALID_CREDENTIAL_CHARACTERS[rand(VALID_CREDENTIAL_CHARACTERS.length)] }.join
         end
 
-        # Return the version of postgresql
         def pg_version(conn)
           return '-1' unless conn
           version = conn.query("select version()")
@@ -56,9 +55,93 @@ module VCAP
           return version[0]['version'].scan(reg)[0][0][0]
         end
 
-        def reset_owner(conn, name, owner)
-          return unless conn
-          conn.query("alter database #{name} owner to #{owner}")
+        def get_public_schema_id(conn)
+          if conn
+            res = conn.query("select oid, nspname, nspowner from pg_namespace where nspname = 'public'")
+            schema_id = nil
+            res.each do |nsp|
+              schema_id = nsp['oid']
+              break
+            end
+            schema_id
+          else
+            nil
+          end
+        end
+
+        def postgresql_connect(host, user, password, port, database, fail_with_nil = false)
+          5.times do
+            begin
+              @logger.info("PostgreSQL connect: #{host}, #{port}, #{user}, #{password}, #{database} (fail_with_nil: #{fail_with_nil})") if @logger
+              connect = PGconn.connect(host, port, nil, nil, database, user, password)
+              version = pg_version(connect)
+              @logger.info("PostgreSQL server version: #{version}") if @logger
+              @logger.info("Connected") if @logger
+              return connect
+            rescue PGError => e
+              @logger.error("PostgreSQL connection attempt failed: #{host} #{port} #{database} #{user} #{password}") if @logger
+              sleep(2)
+            end
+          end
+          if fail_with_nil
+            @logger.warn("PostgreSQL connection unrecoverable") if @logger
+            return nil
+          else
+            @logger.fatal("PostgreSQL connection unrecoverable") if @logger
+            shutdown if self.respond_to?(:shutdown)
+            exit
+          end
+        end
+
+        def get_conn_schemas(default_connection)
+          if default_connection
+            schemas = {}
+            res = default_connection.query("select n.oid as nspid,n.nspname,n.nspowner from pg_namespace as n inner join pg_roles as r on n.nspowner = r.oid where r.rolname = '#{default_connection.user}'")
+            res.each do |ns|
+              schemas[ns['nspname']] = ns['nspid']
+            end
+            schemas
+          else
+            nil
+          end
+        end
+
+        def reset_owner(pgconn, name, owner)
+          return unless pgconn
+          pgconn.query("alter database #{name} owner to #{owner}")
+        end
+
+        def do_grant_query(db_connection,user,sys_user)
+          return unless db_connection
+          db_connection.query("update pg_class set relowner = (select oid from pg_roles where rolname = '#{user}') where relowner = (select oid from pg_roles where rolname = '#{sys_user}')")
+        end
+
+        def do_revoke_query(db_connection, user, sys_user)
+          db_connection.query("revoke create on schema public from #{user} CASCADE")
+          if pg_version(db_connection) == '9'
+            db_connection.query("REVOKE ALL ON ALL TABLES IN SCHEMA PUBLIC from #{user} CASCADE")
+            db_connection.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA PUBLIC from #{user} CASCADE")
+            db_connection.query("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA PUBLIC from #{user} CASCADE")
+          else
+            queries = db_connection.query("select 'REVOKE ALL ON '||tablename||' from #{user} CASCADE;' as query_to_do from pg_tables where schemaname = 'public'")
+            queries.each do |query_to_do|
+               db_connection.query(query_to_do['query_to_do'].to_s)
+            end
+            queries = db_connection.query("select 'REVOKE ALL ON SEQUENCE '||relname||' from #{user} CASCADE;' as query_to_do from pg_class where relkind = 'S'")
+            queries.each do |query_to_do|
+               db_connection.query(query_to_do['query_to_do'].to_s)
+            end
+          end
+
+          # with the fix for user access rights in r8, actually this line is a no-op.
+          # - for newly created users(after the fix), all objects created will be owned by parent
+          # - for existing users(created before the fix), if quota exceeds, then sys_user will
+          #  own the objects, but, when the fix comes, the migration job will pull all the objects
+          #  (both user and sys_user) to parent as the owner. So, after the fix comes, there is no
+          #  object owned by sys_user.
+          # while quota can be still enforced because 'revoke_write_access' and 'do_revoke_query'
+          # do the work.
+          db_connection.query("update pg_class set relowner = (select oid from pg_roles where rolname = '#{sys_user}') where relowner = (select oid from pg_roles where rolname ='#{user}')")
         end
 
         def grant_user_priv(conn, version)
@@ -69,15 +152,157 @@ module VCAP
             conn.query("grant all on all sequences in schema public to public")
             conn.query("grant all on all functions in schema public to public")
           else
-            querys = conn.query("select 'grant all on '||tablename||' to public;' as query_to_do from pg_tables where schemaname = 'public'")
-            querys.each do |query_to_do|
+            queries = conn.query("select 'grant all on '||tablename||' to public;' as query_to_do from pg_tables where schemaname = 'public'")
+            queries.each do |query_to_do|
               conn.query(query_to_do['query_to_do'].to_s)
             end
-            querys = conn.query("select 'grant all on sequence '||relname||' to public;' as query_to_do from pg_class where relkind = 'S'")
-            querys.each do |query_to_do|
+            queries = conn.query("select 'grant all on sequence '||relname||' to public;' as query_to_do from pg_class where relkind = 'S'")
+            queries.each do |query_to_do|
               conn.query(query_to_do['query_to_do'].to_s)
             end
           end
+        end
+
+        def grant_schema_write_access(db_connection, schema_id, schema, role)
+          return unless db_connection
+          db_connection.query("grant create on schema #{schema} to #{role}")
+          if pg_version(db_connection) == '9'
+            db_connection.query("grant all on all tables in schema #{schema} to #{role}")
+            db_connection.query("grant all on all sequences in schema #{schema} to #{role}")
+            db_connection.query("grant all on all functions in schema #{schema} to #{role}")
+          else
+            queries = db_connection.query("select 'grant all on #{schema}.'||tablename||' to #{role};' as query_to_do from pg_tables where schemaname = '#{schema}'")
+            queries.each do |query_to_do|
+              db_connection.query(query_to_do['query_to_do'].to_s)
+            end
+            queries = db_connection.query("select 'grant all on sequence #{schema}.'||relname||' to #{role};' as query_to_do from pg_class where relkind = 'S' and relnamespace = #{schema_id}")
+            queries.each do |query_to_do|
+              db_connection.query(query_to_do['query_to_do'].to_s)
+            end
+          end
+        end
+
+        def revoke_schema_write_access(db_connection, schema_id, schema, role)
+          return unless db_connection
+          db_connection.query("revoke create on schema #{schema} from #{role} CASCADE")
+          if pg_version(db_connection) == '9'
+            db_connection.query("REVOKE ALL ON ALL TABLES IN SCHEMA #{schema} from #{role} CASCADE")
+            db_connection.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA #{schema} from #{role} CASCADE")
+            db_connection.query("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA #{schema} from #{role} CASCADE")
+            db_connection.query("grant select,delete,truncate,references,trigger on all tables in schema #{schema} to #{role}")
+            db_connection.query("grant usage,select on all sequences in schema #{schema} to #{role}")
+          else
+            queries = db_connection.query("select 'REVOKE ALL ON #{schema}.'||tablename||' from #{role} CASCADE;' as query_to_do from pg_tables where schemaname = '#{schema}'")
+            queries.each do |query_to_do|
+               db_connection.query(query_to_do['query_to_do'].to_s)
+            end
+            # revoke privileges of sequence should belong to the schema
+            queries = db_connection.query("select 'REVOKE ALL ON SEQUENCE #{schema}.'||relname||' from #{role} CASCADE;' as query_to_do from pg_class where relkind = 'S' and relnamespace = #{schema_id}")
+            queries.each do |query_to_do|
+               db_connection.query(query_to_do['query_to_do'].to_s)
+            end
+            queries = db_connection.query("select 'grant select,delete,truncate,references,trigger on #{schema}.'||tablename||' to #{role};' as query_to_do from pg_tables where schemaname = '#{schema}'")
+            queries.each do |query_to_do|
+               db_connection.query(query_to_do['query_to_do'].to_s)
+            end
+            queries = db_connection.query("select 'grant usage,select on SEQUENCE #{schema}.'||relname||' to #{role};' as query_to_do from pg_class where relkind = 'S' and relnamespace = #{schema_id}")
+            queries.each do |query_to_do|
+               db_connection.query(query_to_do['query_to_do'].to_s)
+            end
+          end
+        end
+
+        #Grant access without checking
+        def grant_write_access_internal(db_connection, service, public_schema_id=nil)
+          return false unless db_connection && service
+          name = service.name
+          default_user = service.bindusers.all(:default_user => true)[0]
+          unless default_user
+            @logger.error("No default user #{default_user} for database #{name} when granting write access") if @logger
+            return false
+          end
+          default_connection = postgresql_connect(db_connection.host, default_user.user, default_user.password, db_connection.port, name, true)
+          unless default_connection
+            @logger.error("Default user failed to connect to database #{name} when granting write access")
+            return false
+          end
+          public_schema_id ||= get_public_schema_id(db_connection)
+          unless public_schema_id
+            @logger.error("Fail to get public schema id")
+            return false
+          end
+          service.bindusers.all.each do |binduser|
+            user = binduser.user
+            sys_user = binduser.sys_user
+            sys_password = binduser.sys_password
+            db_connection_sys_user = postgresql_connect(db_connection.host, sys_user, sys_password, db_connection.port, name, true)
+            if db_connection_sys_user.nil?
+              @logger.error("Unable to grant write access to #{name} for #{sys_user}") if @logger
+            else
+              db_connection_sys_user.query("vacuum full")
+              db_connection_sys_user.close
+              do_grant_query(db_connection, user, sys_user)
+            end
+            db_connection.query("GRANT TEMP ON DATABASE #{name} to #{user}")
+            db_connection.query("GRANT TEMP ON DATABASE #{name} to #{sys_user}")
+          end
+          grant_schema_write_access(db_connection, public_schema_id, 'public', 'public')
+          schemas = get_conn_schemas(default_connection) || {}
+          schemas.each do |sc, sc_id|
+            grant_schema_write_access(default_connection, sc_id, sc, default_user.user)
+          end
+
+          db_connection.query("grant create on database #{name} to #{default_user.user}")
+          service.quota_exceeded = false
+          service.save
+          true
+        end
+
+        def revoke_write_access_internal(pgconn, db_connection, service, public_schema_id=nil)
+          return false unless pgconn && db_connection && service
+          name = service.name
+          default_user = service.bindusers.all(:default_user => true)[0]
+          unless default_user
+            @logger.warn("No default user #{default_user} for database #{name} when granting write access") if @logger
+            return false
+          end
+          default_connection = postgresql_connect(db_connection.host, default_user.user, default_user.password, db_connection.port, name, true)
+          unless default_connection
+            @logger.warn("Default user #{default_user} fail to connect to database #{name} when revoking write access")
+            return false
+          end
+          public_schema_id ||= get_public_schema_id(db_connection)
+          unless public_schema_id
+            @logger.warn("Fail to get public schema id")
+            return false
+          end
+          # revoke create privilege from database
+          db_connection.query("revoke create on database #{name} from #{default_user.user}")
+
+          # revoke write access from public shema
+          revoke_schema_write_access(db_connection, public_schema_id, 'public', 'public')
+
+          # revoke write privilege on all created schemas on the database
+          # only the members in the same group could see the schemas, even super user could not see them
+          schemas = get_conn_schemas(default_connection) || {}
+          schemas.each do |sc, sc_id|
+            revoke_schema_write_access(default_connection, sc_id, sc, default_user[:user])
+          end
+          default_connection.close if default_connection
+
+          # revoke temp privilege on the database
+          service.bindusers.all.each do |binduser|
+            user = binduser.user
+            sys_user = binduser.sys_user
+            kill_user_sessions(pgconn, user, name)
+            db_connection.query("REVOKE TEMP ON DATABASE #{name} from #{user}")
+            db_connection.query("REVOKE TEMP ON DATABASE #{name} from #{sys_user}")
+            do_revoke_query(db_connection, user, sys_user)
+          end
+          db_connection.close
+          service.quota_exceeded = true
+          service.save
+          true
         end
 
         def get_db_info(conn, db)
@@ -87,7 +312,7 @@ module VCAP
         end
 
         def drop_db(conn, db)
-            return unless conn
+          return unless conn
           conn.query("drop database #{db}")
         end
 
@@ -101,9 +326,38 @@ module VCAP
           conn.query("revoke all on database #{db} from public")
         end
 
+        def kill_user_sessions(conn, target_user, target_db)
+          return unless conn
+          conn.query("select pg_terminate_backend(procpid) from pg_stat_activity where usename = '#{target_user}' and datname = '#{target_db}'")
+        end
+
         def kill_alive_sessions(conn, db)
           return unless conn
           conn.query("select pg_terminate_backend(procpid) from pg_stat_activity where datname='#{db}'")
+        end
+
+        def block_user_from_db(db_connection, service)
+          name = service.name
+          default_user = service.bindusers.all(:default_user => true)[0]
+          service.bindusers.all.each do |binduser|
+            if binduser.default_user == false
+              db_connection.query("revoke #{default_user.user} from #{binduser.user}")
+              db_connection.query("revoke connect on database #{name} from #{binduser.user}")
+              db_connection.query("revoke connect on database #{name} from #{binduser.sys_user}")
+            end
+          end
+        end
+
+        def unblock_user_from_db(db_connection, service)
+          name = service.name
+          default_user = service.bindusers.all(:default_user => true)[0]
+          service.bindusers.all.each do |binduser|
+            if binduser.default_user == false
+              db_connection.query("GRANT CONNECT ON DATABASE #{name} to #{binduser.user}")
+              db_connection.query("GRANT CONNECT ON DATABASE #{name} to #{binduser.sys_user}")
+              db_connection.query("GRANT #{default_user.user} to #{binduser.user}")
+            end
+          end
         end
 
         def disable_db_conn(conn, db, service)
@@ -122,7 +376,6 @@ module VCAP
           end
         end
 
-
         def execute_shell_cmd(cmd, env={}, stdin=nil, logger=nil)
           o, e, s = Open3.capture3(env, cmd, :stdin_data => stdin)
           [o, e, s]
@@ -131,22 +384,25 @@ module VCAP
         def reset_db(host, port, vcap_user, vcap_pass, name, service)
           pgconn = PGconn.new(host, port, nil, nil, "postgres", vcap_user, vcap_pass)
           disable_db_conn(pgconn, name, service)
-
           kill_alive_sessions(pgconn, name)
           db_info = get_db_info(pgconn, name)
           db_version = pg_version(pgconn)
-
+          # we should considering re-set the privileges (such as create/temp ...) for parent role
           drop_db(pgconn, name)
 
           create_db(pgconn, name, db_info)
-
-          dbconn = PGconn.new(host, port, nil, nil, name, vcap_user, vcap_pass)
-          grant_user_priv(dbconn, db_version)
-          dbconn.close
-
           enable_db_conn(pgconn, name, service)
 
-          pgconn.close
+          # should re-grant write privilege on database to parent role for restoring schemas
+          # at the same time, for the database is recreated, the size should be under quota, it is safe to do this.
+          # service.exceeded_quota should be false after this.
+          dbconn = PGconn.new(host, port, nil, nil, name, vcap_user, vcap_pass)
+          unless grant_write_access_internal(dbconn, service)
+            raise "Fail to grant write access when reseting the database #{name}"
+          end
+        ensure
+          dbconn.close if dbconn
+          pgconn.close if pgconn
         end
 
         # Use this method for backuping and snapshoting the database
@@ -159,7 +415,7 @@ module VCAP
         # opts: optional arguments
         #   dump_bin
         #   logger
-        def dump_database(name, host, port, user, passwd, dump_file, opts = {} )
+        def dump_database(name, host, port, user, passwd, dump_file, opts = {})
           raise "You must provide the following arguments: name, host, port, user, passwd, dump_file" unless name && host && port && user && passwd && dump_file
 
           dump_bin = opts[:dump_bin] || 'pg_dump'
@@ -193,17 +449,17 @@ module VCAP
         # opts: optional arguments
         #   restore_bin
         #   logger
-        def restore_database(name, host, port, user, passwd, dump_file, opts = {} )
+        def restore_database(name, host, port, user, passwd, dump_file, opts = {})
           raise "You must provide the following arguments: name, host, port, user, passwd, dump_file" unless name && host && port && user && passwd && dump_file
 
-          archive_list(dump_file, opts )
+          archive_list(dump_file, opts)
 
           restore_bin = opts[:restore_bin] || 'pg_restore'
           restore_cmd = "#{restore_bin} -h #{host} -p #{port} -U #{user} -L #{dump_file}.archive_list -d #{name} #{dump_file} "
 
           # running the command
           o, e, s = execute_shell_cmd(restore_cmd)
-          return s.exitstatus == 0
+          s.exitstatus == 0
         ensure
           FileUtils.rm_rf("#{dump_file}.archive_list")
         end

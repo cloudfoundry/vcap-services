@@ -74,7 +74,6 @@ module VCAP::Services::Postgresql::Snapshot
     end
 
     def restore_db(name, snapshot_id)
-
       VCAP::Services::Postgresql::Node.setup_datamapper(:default, @config["local_db"])
       service = VCAP::Services::Postgresql::Node::Provisionedservice.get(name)
       raise "No information for provisioned service with name #{name}." unless service
@@ -86,7 +85,6 @@ module VCAP::Services::Postgresql::Snapshot
       raise "Can't find snapshot file #{snapshot_file_path}" unless File.exists?(dump_file_name)
 
       host, port, vcap_user, vcap_pass = %w(host port user pass).map{ |k| @config["postgresql"][k]}
-
       # Need a user who is a superuser to disable db access and then kill all live sessions first
       reset_db(host, port, vcap_user, vcap_pass, name, service)
       # Import the dump file
