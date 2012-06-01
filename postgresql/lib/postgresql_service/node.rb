@@ -55,6 +55,8 @@ class VCAP::Services::Postgresql::Node
   def pre_send_announcement
     Node.setup_datamapper(:default, @local_db)
     @connection = postgresql_connect(@postgresql_config["host"],@postgresql_config["user"],@postgresql_config["pass"],@postgresql_config["port"],@postgresql_config["database"])
+    @public_schema = get_public_schema()
+    raise "Fail to get the public schema information" unless @public_schema
     check_db_consistency()
 
     @capacity_lock.synchronize do
@@ -90,6 +92,8 @@ class VCAP::Services::Postgresql::Node
     # Services-r11 and earlier the user could not have temp privilege to
     # create temporary tables/views/sequences. Services-r12 solves this issue.
     manage_temp_privilege(provisionedservice.name)
+    # In earlier releases, users should not have create privilege to create schmea in databases.
+    manage_create_privilege(provisionedservice.name)
   end
 
   def get_expected_children(name)
@@ -197,7 +201,18 @@ class VCAP::Services::Postgresql::Node
       connection.query("GRANT TEMP ON DATABASE #{name} TO #{i_c}")
     end
   rescue => x
-    @logger.warn("Exception while managing temp privilege: #{x}")
+    @logger.warn("Exception while managing temp privilege on database #{name}: #{x}")
+  ensure
+    connection.close if connection
+  end
+
+  def manage_create_privilege(name)
+    return if Provisionedservice.get(name).quota_exceeded
+    connection = postgresql_connect @postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name
+    parent = Provisionedservice.get(name).bindusers.all(:default_user => true)[0]
+    connection.query("GRANT CREATE ON DATABASE #{name} TO #{parent.user}")
+  rescue => x
+    @logger.warn("Exception while managing create privilege on database #{name}: #{x}")
   ensure
     connection.close if connection
   end
@@ -251,30 +266,6 @@ class VCAP::Services::Postgresql::Node
           next
         end
       end
-    end
-  end
-
-  def postgresql_connect(host, user, password, port, database, fail_with_nil = false)
-    5.times do
-      begin
-        @logger.info("PostgreSQL connect: #{host}, #{port}, #{user}, #{password}, #{database} (fail_with_nil: #{fail_with_nil})")
-        connect = PGconn.connect(host, port, nil, nil, database, user, password)
-        version = get_postgres_version(connect)
-        @logger.info("PostgreSQL server version: #{version}")
-        @logger.info("Connected")
-        return connect
-      rescue PGError => e
-        @logger.error("PostgreSQL connection attempt failed: #{host} #{port} #{database} #{user} #{password}")
-        sleep(2)
-      end
-    end
-    if fail_with_nil
-      @logger.warn("PostgreSQL connection unrecoverable")
-      return nil
-    else
-      @logger.fatal("PostgreSQL connection unrecoverable")
-      shutdown
-      exit
     end
   end
 
@@ -489,20 +480,44 @@ class VCAP::Services::Postgresql::Node
     @connection.query("REVOKE ALL ON DATABASE #{name} FROM PUBLIC")
   end
 
+  def get_public_schema
+    public_schema_id = get_public_schema_id(@connection)
+    raise "Fail to get public schema's id" unless public_schema_id
+    {'public' => public_schema_id}
+  rescue =>e
+    @logger.error("Postgresql Node exception: #{e} " + e.backtrace.join("|"))
+  end
+
+  # get all user-created schemas of a database
+  # FIXME we only need default_connection
+  def get_schemas(name)
+    # get the parent role of the databse
+    default_user = Provisionedservice.get(name).bindusers.all(:default_user => true)[0]
+    # only members in the group could see the schemas
+    default_connection = postgresql_connect(@postgresql_config['host'], rolname, default_user[:password], @postgresql_config['port'], name, true)
+    raise "#{rolname} failed to connect to database #{name} to get schemas" unless default_connection
+    schemas = get_conn_schemas(default_connection) || {}
+    default_connection.close if default_connection
+    schemas
+  rescue => e
+    @logger.error("Postgresql Node exception: #{e} "+
+                   e.backtrace.join("|"))
+  end
+
   def exe_grant_user_priv(db_connection)
     db_connection.query("grant create on schema public to public")
-    if get_postgres_version(db_connection) == '9'
+    if pg_version(db_connection) == '9'
       db_connection.query("grant all on all tables in schema public to public")
       db_connection.query("grant all on all sequences in schema public to public")
       db_connection.query("grant all on all functions in schema public to public")
     else
-      querys = db_connection.query("select 'grant all on '||tablename||' to public;' as query_to_do from pg_tables where schemaname = 'public'")
-      querys.each do |query_to_do|
+      queries = db_connection.query("select 'grant all on '||tablename||' to public;' as query_to_do from pg_tables where schemaname = 'public'")
+      queries.each do |query_to_do|
         p query_to_do['query_to_do'].to_s
         db_connection.query(query_to_do['query_to_do'].to_s)
       end
-      querys = db_connection.query("select 'grant all on sequence '||relname||' to public;' as query_to_do from pg_class where relkind = 'S'")
-      querys.each do |query_to_do|
+      queries = db_connection.query("select 'grant all on sequence '||relname||' to public;' as query_to_do from pg_class where relkind = 'S'")
+      queries.each do |query_to_do|
         db_connection.query(query_to_do['query_to_do'].to_s)
       end
     end
@@ -542,10 +557,15 @@ class VCAP::Services::Postgresql::Node
       #Ignore privileges Initializing error. Log only.
       begin
         if quota_exceeded then
+          # revoke create privilege on database to parent role
+          # In fact, this is a noop, for the create privilege of parent user should be revoked in revoke_write_access when quota is exceeded.
+          db_connection.query("REVOKE CREATE ON DATABASE #{name} FROM #{user}") unless parent
           db_connection.query("REVOKE TEMP ON DATABASE #{name} from #{user}")
           db_connection.query("REVOKE TEMP ON DATABASE #{name} from #{sys_user}")
           do_revoke_query(db_connection, user, sys_user)
         else
+          # grant create privilege on database to parent role
+          db_connection.query("GRANT CREATE ON DATABASE #{name} TO #{user}") unless parent
           db_connection.query("GRANT TEMP ON DATABASE #{name} to #{user}")
           db_connection.query("GRANT TEMP ON DATABASE #{name} to #{sys_user}")
           exe_grant_user_priv(db_connection)
@@ -566,6 +586,9 @@ class VCAP::Services::Postgresql::Node
     begin
       exe_drop_database(name)
       default_binduser = bindusers.all(:default_user => true)[0]
+      # should drop objects owned by the default user, such as created schemas
+      @connection.query("DROP OWNED BY #{default_binduser.user}")
+      @connection.query("DROP OWNED BY #{default_binduser.sys_user}")
       @connection.query("DROP ROLE IF EXISTS #{default_binduser.user}") if default_binduser
       @connection.query("DROP ROLE IF EXISTS #{default_binduser.sys_user}") if default_binduser
       true
@@ -597,7 +620,7 @@ class VCAP::Services::Postgresql::Node
     begin
       db_connection.query("DROP OWNED BY #{binduser.user}")
       db_connection.query("DROP OWNED BY #{binduser.sys_user}")
-      if get_postgres_version(db_connection) == '9'
+      if pg_version(db_connection) == '9'
         db_connection.query("REVOKE ALL ON ALL TABLES IN SCHEMA PUBLIC from #{binduser.user} CASCADE")
         db_connection.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA PUBLIC from #{binduser.user} CASCADE")
         db_connection.query("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA PUBLIC from #{binduser.user} CASCADE")
@@ -605,20 +628,20 @@ class VCAP::Services::Postgresql::Node
         db_connection.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA PUBLIC from #{binduser.sys_user} CASCADE")
         db_connection.query("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA PUBLIC from #{binduser.sys_user} CASCADE")
       else
-        querys = db_connection.query("select 'REVOKE ALL ON '||tablename||' from #{binduser.user} CASCADE;' as query_to_do from pg_tables where schemaname = 'public'")
-        querys.each do |query_to_do|
+        queries = db_connection.query("select 'REVOKE ALL ON '||tablename||' from #{binduser.user} CASCADE;' as query_to_do from pg_tables where schemaname = 'public'")
+        queries.each do |query_to_do|
           db_connection.query(query_to_do['query_to_do'].to_s)
         end
-        querys = db_connection.query("select 'REVOKE ALL ON SEQUENCE '||relname||' from #{binduser.user} CASCADE;' as query_to_do from pg_class where relkind = 'S'")
-        querys.each do |query_to_do|
+        queries = db_connection.query("select 'REVOKE ALL ON SEQUENCE '||relname||' from #{binduser.user} CASCADE;' as query_to_do from pg_class where relkind = 'S'")
+        queries.each do |query_to_do|
           db_connection.query(query_to_do['query_to_do'].to_s)
         end
-        querys = db_connection.query("select 'REVOKE ALL ON '||tablename||' from #{binduser.sys_user} CASCADE;' as query_to_do from pg_tables where schemaname = 'public'")
-        querys.each do |query_to_do|
+        queries = db_connection.query("select 'REVOKE ALL ON '||tablename||' from #{binduser.sys_user} CASCADE;' as query_to_do from pg_tables where schemaname = 'public'")
+        queries.each do |query_to_do|
           db_connection.query(query_to_do['query_to_do'].to_s)
         end
-        querys = db_connection.query("select 'REVOKE ALL ON SEQUENCE '||relname||' from #{binduser.sys_user} CASCADE;' as query_to_do from pg_class where relkind = 'S'")
-        querys.each do |query_to_do|
+        queries = db_connection.query("select 'REVOKE ALL ON SEQUENCE '||relname||' from #{binduser.sys_user} CASCADE;' as query_to_do from pg_class where relkind = 'S'")
+        queries.each do |query_to_do|
           db_connection.query(query_to_do['query_to_do'].to_s)
         end
       end
@@ -651,36 +674,6 @@ class VCAP::Services::Postgresql::Node
     }
   end
 
-  def get_postgres_version(db_connection)
-    version = db_connection.query("select version()")
-    reg = /([0-9.]{5})/
-    return version[0]['version'].scan(reg)[0][0][0]
-  end
-
-  def block_user_from_db(db_connection, service)
-    name = service.name
-    default_user = service.bindusers.all(:default_user => true)[0]
-    service.bindusers.all.each do |binduser|
-      if binduser.default_user == false
-        db_connection.query("revoke #{default_user.user} from #{binduser.user}")
-        db_connection.query("revoke connect on database #{name} from #{binduser.user}")
-        db_connection.query("revoke connect on database #{name} from #{binduser.sys_user}")
-      end
-    end
-  end
-
-  def unblock_user_from_db(db_connection, service)
-    name = service.name
-    default_user = service.bindusers.all(:default_user => true)[0]
-    service.bindusers.all.each do |binduser|
-      if binduser.default_user == false
-        db_connection.query("GRANT CONNECT ON DATABASE #{name} to #{binduser.user}")
-        db_connection.query("GRANT CONNECT ON DATABASE #{name} to #{binduser.sys_user}")
-        db_connection.query("GRANT #{default_user.user} to #{binduser.user}")
-      end
-    end
-  end
-
   def bind_all_creds(name, binding_creds_hash)
     binding_creds_hash.each_value do |v|
       begin
@@ -700,19 +693,20 @@ class VCAP::Services::Postgresql::Node
     raise PostgresqlError.new(PostgresqlError::POSTGRESQL_CONFIG_NOT_FOUND, name) unless service
     default_user = service.bindusers.all(:default_user => true)[0]
     raise "No default user for provisioned service #{name}" unless default_user
-    reset_db(@postgresql_config['host'], @postgresql_config['port'], @postgresql_config['user'], @postgresql_config['pass'], name, service)
 
-    host, port =  %w{host port}.map { |opt| @postgresql_config[opt] }
-    path = File.join(backup_path, "#{name}.dump")
+    host, port, vcap_user, vcap_pass =  %w{host port user pass}.map { |opt| @postgresql_config[opt] }
+    reset_db(host, port, vcap_user, vcap_pass, name, service)
 
     user =  default_user[:user]
     passwd = default_user[:password]
+    path = File.join(backup_path, "#{name}.dump")
     archive_list(path, { :restore_bin => @restore_bin })
+
     cmd = "#{@restore_bin} -h #{host} -p #{port} -U #{user} -L #{path}.archive_list -d #{name} #{path}"
     o, e, s = exe_cmd(cmd)
-    return  s.exitstatus == 0
+    s.exitstatus == 0
   rescue => e
-    @logger.error("Error during restore #{e}")
+    @logger.error("Error during restore: #{e}")
     nil
   ensure
     FileUtils.rm_rf("#{path}.archive_list")
