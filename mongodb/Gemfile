@@ -12,7 +12,6 @@ gem "mongo"
 gem "bson_ext"
 gem "thin"
 gem "sinatra"
-gem "warden-client"
 gem "posix-spawn"
 
 gem 'vcap_common', '~> 1.0.8', :require => ['vcap/common', 'vcap/component']
