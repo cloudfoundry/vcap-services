@@ -54,7 +54,7 @@ class VCAP::Services::Rabbit::Node
     # Timeout for redis client operations, node cannot be blocked on any redis instances.
     # Default value is 2 seconds.
     @rabbitmq_timeout = @options[:rabbitmq_timeout] || 2
-    @rabbitmq_start_timeout = @options[:rabbitmq_start_timeout] || 5
+    @rabbitmq_start_timeout = @options[:rabbitmq_start_timeout] || 500
     @default_permissions = '{"configure":".*","write":".*","read":".*"}'
     @initial_username = "guest"
     @initial_password = "guest"
