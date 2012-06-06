@@ -120,6 +120,7 @@ class VCAP::Services::Rabbit::Node
       instance = ProvisionedService.create(port, get_admin_port(port), plan)
     end
     instance.run
+    sleep 1000
     # Wait enough time for the RabbitMQ server starting
     raise RabbitmqError.new(RabbitmqError::RABBITMQ_START_INSTANCE_TIMEOUT, instance.name) if wait_rabbitmq_server_start(instance) == false
     # Use initial credentials to create provision user
