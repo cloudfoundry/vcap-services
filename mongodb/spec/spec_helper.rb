@@ -137,7 +137,8 @@ def get_node_config()
     :mongod_log_dir => '/tmp/mongo/logs',
     :local_db => 'sqlite3:/tmp/mongo/mongodb_node.db',
     :image_dir => '/tmp/mongo/images',
-    :max_db_size => 128
+    :max_db_size => 128,
+    :mongodump_path => '/usr/bin/mongodump'
   }
   options[:logger].level = Logger::FATAL
   options
