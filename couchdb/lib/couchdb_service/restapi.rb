@@ -145,7 +145,7 @@ module VCAP
         end
 
         def couchdb_users_for_db(db, name)
-          rows = db.all_docs(:include_docs => true)["rows"]
+          rows = db.documents(:include_docs => true)["rows"]
           rows.select { |u| u["doc"]["type"] == "user" && u["doc"]["bind_db"] == name }.map { |u| u["doc"]["name"] }
         end
       end
