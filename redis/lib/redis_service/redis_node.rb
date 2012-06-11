@@ -377,6 +377,7 @@ class VCAP::Services::Redis::Node::ProvisionedService
       @image_dir = options[:image_dir]
       @logger = options[:logger]
       @max_db_size = options[:max_db_size]
+      @quota = options[:filesystem_quota] || false
       FileUtils.mkdir_p(base_dir)
       FileUtils.mkdir_p(log_dir)
       FileUtils.mkdir_p(image_dir)

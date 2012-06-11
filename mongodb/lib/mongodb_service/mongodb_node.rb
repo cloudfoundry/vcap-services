@@ -402,6 +402,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
       @image_dir = args[:image_dir]
       @logger = args[:logger]
       @max_db_size = args[:max_db_size] ? args[:max_db_size] : 128
+      @quota = args[:filesystem_quota] || false
       DataMapper.setup(:default, args[:local_db])
       DataMapper::auto_upgrade!
       FileUtils.mkdir_p(base_dir)
