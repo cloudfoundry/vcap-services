@@ -418,6 +418,7 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
       @image_dir = options[:image_dir]
       @logger = options[:logger]
       @max_db_size = options[:max_db_size]
+      @quota = options[:filesystem_quota] || false
       FileUtils.mkdir_p(options[:base_dir])
       FileUtils.mkdir_p(options[:rabbitmq_log_dir])
       FileUtils.mkdir_p(options[:image_dir])
