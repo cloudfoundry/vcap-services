@@ -97,7 +97,6 @@ def get_node_config()
     :base_dir => '/tmp/vblob/instance',
     :log_dir => '/tmp/vblob/log',
     :local_db => 'sqlite3:/tmp/vblob/vblob_node.db',
-    :image_dir => '/tmp/vblob/vblob_image'
   }
   options[:logger].level = Logger::DEBUG
   options
