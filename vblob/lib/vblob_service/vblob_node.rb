@@ -323,19 +323,16 @@ class VCAP::Services::VBlob::Node::ProvisionedService
     def init(options)
       @base_dir = options[:base_dir]
       @log_dir = options[:vblobd_log_dir]
-      @image_dir = options[:image_dir]
-      @max_db_size = options[:max_db_size]
+      @max_db_size = options[:max_db_size] || 2147483647 #default max bytes
       @logger = options[:logger]
       @@config_template = ERB.new(File.read(options[:config_template]))
       @@nodejs_path = options[:nodejs_path]
       @@vblobd_path = options[:vblobd_path]
       @@vblobd_auth = options[:vblobd_auth] || "basic" #default is basic auth
       @@vblobd_obj_limit = options[:vblobd_obj_limit] || 32768  #default max obj num
-      @@vblobd_quota = options[:vblobd_quota] || 2147483647 #default max bytes
       @@vblob_start_timeout = 10
       FileUtils.mkdir_p(base_dir)
       FileUtils.mkdir_p(log_dir)
-      FileUtils.mkdir_p(image_dir)
       DataMapper.setup(:default, options[:local_db])
       DataMapper::auto_upgrade!
     end
@@ -349,8 +346,6 @@ class VCAP::Services::VBlob::Node::ProvisionedService
       raise "Cannot save provision_service" unless provisioned_service.save!
 
       provisioned_service.loop_create(max_db_size)
-      provisioned_service.loop_setup
-
       FileUtils.mkdir_p(provisioned_service.data_dir)
 
       provisioned_service.generate_config
