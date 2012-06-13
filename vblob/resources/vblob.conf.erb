@@ -10,7 +10,7 @@
                 "gcfc_exepath": "<%= @@vblobd_path %>/drivers/fs/fs_gcfc.js",
                 "gctmp_exepath": "<%= @@vblobd_path %>/drivers/fs/fs_gctmp.js",
                 "ec_exepath": "<%= @@vblobd_path %>/drivers/fs/fs_ec.js",
-                "quota": <%= @@vblobd_quota %>,
+                "quota": <%= provisioned_service.class.max_db_size %>,
                 "obj_limit": <%= @@vblobd_obj_limit %>
             }
         }
