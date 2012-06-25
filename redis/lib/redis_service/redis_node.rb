@@ -114,6 +114,7 @@ class VCAP::Services::Redis::Node
       port = new_port
       instance = ProvisionedService.create(port, plan, nil, nil, db_file)
     end
+
     instance.run
     raise RedisError.new(RedisError::REDIS_START_INSTANCE_TIMEOUT, instance.name) if wait_redis_server_start(instance) == false
     gen_credentials(instance)
@@ -341,6 +342,7 @@ class VCAP::Services::Redis::Node
           redis.quit if redis
         rescue => e
         end
+        sleep 0.1
       end
     end
     false

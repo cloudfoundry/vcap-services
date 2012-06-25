@@ -25,5 +25,6 @@ rabbitmq_start_timeout: 5
 # z_interval: 30
 # max_nats_payload: 1048576
 # fqdn_hosts: false
+# op_time_limit: 6
 max_db_size: 128
 image_dir: /var/vcap/services/rabbit/rabbitmq_image
