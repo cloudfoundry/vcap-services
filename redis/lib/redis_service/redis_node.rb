@@ -93,6 +93,7 @@ class VCAP::Services::Redis::Node
     # Default value is 2 seconds.
     @redis_timeout = @options[:redis_timeout] || 2
     @redis_start_timeout = @options[:redis_start_timeout] || 3
+    @supported_versions = ["2.2"]
   end
 
   def pre_send_announcement
@@ -116,7 +117,7 @@ class VCAP::Services::Redis::Node
     end
   end
 
-  def provision(plan, credentials = nil, db_file = nil)
+  def provision(plan, version=nil, credentials = nil, db_file = nil)
     raise RedisError.new(RedisError::REDIS_INVALID_PLAN, plan) unless plan.to_s == @plan
     instance = ProvisionedService.new
     instance.plan = 1
