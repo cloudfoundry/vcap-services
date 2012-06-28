@@ -341,6 +341,7 @@ class VCAP::Services::Redis::Node
           redis.quit if redis
         rescue => e
         end
+        sleep 0.1
       end
     end
     false
