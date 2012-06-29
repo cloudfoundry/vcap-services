@@ -10,7 +10,7 @@ pid: /var/vcap/sys/run/couchdb_node.pid
 capacity: 200
 node_id: couchdb_node_1
 migration_nfs: /mnt/migration
-couchdb_install_path: ~/cloudfoundry/.deployments/devbox/deploy/couchdb
+couchdb_install_path: /var/vcap/packages/couchdb
 couchdb:
   host: 127.0.0.1
   port: 5984
