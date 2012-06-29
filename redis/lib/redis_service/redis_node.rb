@@ -41,9 +41,6 @@ class VCAP::Services::Redis::Node
     options[:max_clients] ||= 500
     options[:persistent] ||= false
     # Configuration used in warden
-    options[:instance_base_dir] = "/store/instance"
-    options[:instance_data_dir] = "/store/instance/data"
-    options[:instance_log_dir] = "/store/log"
     @redis_port = options[:instance_port] = 25001
     @config_command_name = options[:config_command_name] = options[:command_rename_prefix] + "-config"
     @shutdown_command_name = options[:shutdown_command_name] = options[:command_rename_prefix] + "-shutdown"
@@ -404,8 +401,6 @@ class VCAP::Services::Redis::Node::ProvisionedService
       port = @@options[:instance_port]
       password = instance.password
       persistent = @@options[:persistent]
-      data_dir = @@options[:instance_data_dir]
-      log_file = File.join(@@options[:instance_log_dir], "redis.log")
       memory = instance.memory
       config_command = @@options[:config_command_name]
       shutdown_command = @@options[:shutdown_command_name]
