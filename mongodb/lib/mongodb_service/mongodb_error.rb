@@ -7,4 +7,5 @@ class VCAP::Services::MongoDB::MongoDBError < VCAP::Services::Base::Error::Servi
     MONGODB_LOCAL_DB_ERROR = [31204, HTTP_INTERNAL, 'MongoDB node local db error.']
     MONGODB_INVALID_PLAN = [31205, HTTP_INTERNAL, 'Invalid plan %s.']
     MONGODB_BAD_SERIALIZED_DATA = [31207, HTTP_BAD_REQUEST, "File %s can't be verified"]
+    MONGODB_UNSUPPORTED_VERSION = [31207, HTTP_BAD_REQUEST, "Node does not support version %s."]
 end
