@@ -179,6 +179,8 @@ GEM
     uuidtools (2.1.2)
     vegas (0.1.11)
       rack (>= 1.0.0)
+    warden-client (0.0.2)
+      yajl-ruby
     yajl-ruby (0.8.3)
 
 PLATFORMS
