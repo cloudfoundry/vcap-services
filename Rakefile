@@ -35,7 +35,7 @@ namespace "bundler" do
   # usage: rake bundler:update![oldref,newref]
   desc "Update git ref in Gemfile"
   task :update, :oref, :nref do |t, args|
-    exec_in_svc_dir { |_| sh "sed -i \"s/#{args[:oref]}/#{args[:nref]}/g\" Gemfile && bundle install" }
+    exec_in_svc_dir { |_| sh "sed -i \"s/#{args[:oref]}/#{args[:nref]}/g\" Gemfile && bundle update vcap_services_base" }
   end
 
   desc "Dry run update"
