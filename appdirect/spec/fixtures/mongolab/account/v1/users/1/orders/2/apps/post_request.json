@@ -1,0 +1,7 @@
+{
+  "email" : "someone@vmware.com",
+  "productId" : "mongolab",
+  "order" : 2,
+  "productName" : "my-db",
+  "appName": "awesomeApp"
+}

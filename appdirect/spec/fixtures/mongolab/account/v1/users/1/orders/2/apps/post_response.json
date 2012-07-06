@@ -1,0 +1,15 @@
+{
+    "productId": "mongolab",
+    "appName" : "awesome_app",
+    "bindingIdentifier": "9",
+    "order" : 2,
+    "data": {
+      "plan": "free",
+       "url": "mongo://etc"
+    },
+    "credentials": {
+      "name": "d8aca7a7dc1984da49abf58c033a38b25",
+      "host": "172.31.232.31",
+      "port": 3306
+    }
+}
