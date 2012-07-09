@@ -50,62 +50,15 @@ class VCAP::Services::VBlob::Node
   def initialize(options)
     super(options)
     @base_dir = options[:base_dir]
-    @free_ports = Set.new
-    @free_ports_mutex = Mutex.new
-    options[:port_range].each {|port| @free_ports << port}
+    init_ports(options[:port_range])
+    @service_start_timeout = @options[:service_start_timeout] || 3
     ProvisionedService.init(options)
-  end
-
-  def fetch_port(port=nil)
-    @free_ports_mutex.synchronize do
-      raise "no port is available" if @free_ports.empty?
-      port ||= @free_ports.first
-      raise "port #{port} is already taken!" unless @free_ports.include?(port)
-      @free_ports.delete(port)
-      port
-    end
-  end
-
-  def return_port(port)
-    @free_ports_mutex.synchronize do
-      raise "port #{port} already released!" if @free_ports.include?(port)
-      @free_ports << port
-    end
-  end
-
-  def delete_port(port)
-    @free_ports_mutex.synchronize do
-      @free_ports.delete(port)
-    end
   end
 
   # handle the cases which has already been in the local sqlite database
   def pre_send_announcement
     @capacity_lock.synchronize do
-      ProvisionedService.all.each do |provisioned_service|
-        @capacity -= capacity_unit
-        delete_port(provisioned_service.port)
-        if provisioned_service.running?
-          @logger.warn("Service #{provisioned_service.name} already listening on port #{provisioned_service.port}")
-          next
-        end
-
-        unless provisioned_service.base_dir?
-          @logger.warn("Service #{provisioned_service.name} in local DB, but not in file system")
-          next
-        end
-
-        provisioned_service.migration_check
-        FileUtils.rm_rf(File.join(provisioned_service.base_dir, "config.json"))
-        provisioned_service.generate_config
-
-        begin
-          provisioned_service.run
-        rescue => e
-          @logger.error("Error starting service #{provisioned_service.name}: #{e}")
-          provisioned_service.stop
-        end
-      end
+      start_instances(ProvisionedService.all)
     end
   end
 
@@ -159,7 +112,7 @@ class VCAP::Services::VBlob::Node
   def provision(plan, credential = nil)
     @logger.debug("Provision a service instance")
 
-    port     = credential && credential['port'] ? fetch_port(credential['port']) : fetch_port
+    port     = credential && credential['port'] ? new_port(credential['port']) : new_port
     name     = credential && credential['name'] ? credential['name'] : UUIDTools::UUID.random_create.to_s
     username = credential && credential['username'] ? credential['username'] : UUIDTools::UUID.random_create.to_s
     password = credential && credential['password'] ? credential['password'] : UUIDTools::UUID.random_create.to_s
@@ -192,7 +145,7 @@ class VCAP::Services::VBlob::Node
     occupied_port = provisioned_service.port
     raise ServiceError.new(ServiceError::NOT_FOUND, name) if provisioned_service.nil?
     raise "Could not cleanup service #{provisioned_service.errors.inspect}" unless provisioned_service.delete
-    return_port(occupied_port)
+    free_port(occupied_port)
     @logger.info("Successfully fulfilled unprovision request: #{name}.")
     true
   end
@@ -423,6 +376,12 @@ class VCAP::Services::VBlob::Node::ProvisionedService
 
   def auth_header(username, password)
     {"Authorization" => "Basic " + Base64.strict_encode64("#{username}:#{password}").strip}
+  end
+
+  def migration_check
+    super
+    FileUtils.rm_rf(File.join(base_dir, "config.json"))
+    generate_config
   end
 
 end
