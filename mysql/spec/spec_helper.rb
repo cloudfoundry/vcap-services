@@ -78,7 +78,7 @@ def getProvisionerTestConfig()
   config = VCAP.symbolize_keys(config)
   options = {
     :logger   => getLogger,
-    :version  => config[:service][:version],
+    :version  => config[:services][:version],
     :local_ip => config[:host],
     :plan_management => config[:plan_management],
     :mbus => config[:mbus]

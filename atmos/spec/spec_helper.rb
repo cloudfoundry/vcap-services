@@ -59,10 +59,10 @@ def get_provisioner_config()
   options = {
     :logger => Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily"),
     # Following options are for Provisioner
-    :version => config[:service][:version],
+    :version => config[:services][:version],
     :local_ip => 'localhost',
     # Following options are for AsynchronousServiceGateway
-    :service => config[:service],
+    :services => config[:services],
     :token => config[:token],
     :cloud_controller => config[:cloud_controller],
     # Following options are for Thin

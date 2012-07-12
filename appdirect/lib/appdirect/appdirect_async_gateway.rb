@@ -1,4 +1,4 @@
-# Copyright (c) 2009-2011 VMware, Inc.
+# Copyright (c) 2009-2012 VMware, Inc.
 require 'fiber'
 require 'dm-types'
 require 'nats/client'
@@ -6,22 +6,24 @@ require 'uuidtools'
 
 module VCAP
   module Services
-    module ServiceBroker
+    module AppDirect
     end
   end
 end
 
-class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services::AsynchronousServiceGateway
+class VCAP::Services::AppDirect::AsynchronousServiceGateway < VCAP::Services::AsynchronousServiceGateway
 
-  class BrokeredService
+  class AppDirectService
     include DataMapper::Resource
     # Custom table name
-    storage_names[:default] = "brokered_services"
+    storage_names[:default] = "appdirect_services"
 
     property :label,       String,   :key => true
     property :name,        String,   :required => true
     property :version,     String,   :required => true
-    property :credentials, Json,     :required => true
+    property :provider,    String
+    property :plan,        String
+    property :credentials, Json
     property :acls,        Json
   end
 
@@ -48,7 +50,7 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
     @cld_ctrl_uri          = http_uri(opts[:cloud_controller_uri])
     @external_uri          = opts[:external_uri]
     @offering_uri          = "#{@cld_ctrl_uri}/services/v1/offerings/"
-    @service_list_uri      = "#{@cld_ctrl_uri}/brokered_services/poc/offerings"
+    @service_list_uri      = "#{@cld_ctrl_uri}/appdirect_services/poc/offerings"
     @router_start_channel  = nil
     @proxy_opts            = opts[:proxy]
     @ready_to_serve        = false
@@ -57,8 +59,10 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
       :host => @host,
       :port => @port,
       :uris => [ @external_uri ],
-      :tags => {:components =>  "ServiceBroker"},
+      :tags => {:components =>  "AppDirect"},
     }.to_json
+
+    @helper = VCAP::Services::AppDirect::Helper.new(opts, @logger)
 
     token_hdrs = VCAP::Services::Api::GATEWAY_TOKEN_HEADER
     @cc_req_hdrs           = {
@@ -84,15 +88,12 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
     ##### Start up
     f = Fiber.new do
       begin
-        start_nats(opts[:mbus])
-        # get all brokered service offerings
-        fetch_brokered_services
+        # get all AppDirect service offerings
+        fetch_appdirect_services
         # active services in local database
         advertise_saved_services
-        # active predefined offerings
-        advertise_pre_defined_services(opts[:services]) if opts[:services]
         # Ready to serve
-        @logger.info("Service broker is ready to serve incoming request.")
+        @logger.info("AppDirect Gateway is ready to serve incoming request.")
         @ready_to_serve = true
       rescue => e
         @logger.fatal("Error when start up: #{fmt_error(e)}")
@@ -119,22 +120,13 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
     abort_request(error_msg)
   end
 
-  def start_nats(uri)
-    f = Fiber.current
-    @nats = NATS.connect(:uri => uri) do
-      on_connect_nats;
-      f.resume
-    end
-    Fiber.yield
-  end
-
   def on_connect_nats()
     @logger.info("Register service broker uri : #{@router_register_json}")
     @nats.publish('router.register', @router_register_json)
     @router_start_channel = @nats.subscribe('router.start') { @nats.publish('router.register', @router_register_json)}
   end
 
-  def fetch_brokered_services
+  def fetch_appdirect_services
     f = Fiber.current
     req = create_http_request(
       :head => @cc_req_hdrs
@@ -173,17 +165,8 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
       req[:url] = "http://#{@external_uri}"
       req[:plans] = ["default"]
       req[:tags] = ["default"]
-      advertise_brokered_service_to_cc(req)
+      advertise_appdirect_service_to_cc(req)
     end
-  end
-
-  def advertise_pre_defined_services(services)
-    services[:label] = "#{services[:name]}-#{services[:version]}"
-    %w(name version).each {|key| services.delete(key.to_sym)}
-    req = VCAP::Services::Api::BrokeredServiceOfferingRequest.new(services)
-    advertise_brokered_service(req)
-  rescue => e
-    @logger.warn("Failed to advertise pre-defined services #{services.inspect}: #{e}")
   end
 
   def stop_nats()
@@ -204,45 +187,13 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
 
   #################### Handlers ###################
 
-  # Advertise or modify a brokered service offerings
-  post "/service-broker/#{API_VERSION}/offerings" do
-    req = VCAP::Services::Api::BrokeredServiceOfferingRequest.decode(request_body)
-    @logger.debug("Advertise brokered service for label=#{req.label}")
-
-    Fiber.new {
-      msg = advertise_brokered_service(req)
-      if msg['success']
-        async_reply
-      else
-        async_reply_error(msg['response'])
-      end
-    }.resume
-    async_mode
-  end
-
-  # Delete a brokered service offerings
-  delete "/service-broker/#{API_VERSION}/offerings/:label" do
-    label = params[:label]
-    @logger.debug("Delete brokered service for label=#{label}")
-
-    Fiber.new {
-      msg = delete_brokered_service(label)
-      if msg['success']
-        async_reply
-      else
-        async_reply_error(msg['response'])
-      end
-    }.resume
-    async_mode
-  end
-
   # Provision a brokered service
   post "/gateway/v1/configurations" do
     req =  VCAP::Services::Api::GatewayProvisionRequest.decode(request_body)
     @logger.info("Provision request for label=#{req.label} plan=#{req.plan}")
 
     Fiber.new {
-      msg = provision_brokered_service(req)
+      msg = provision_appdirect_service(req)
       if msg['success']
         async_reply(VCAP::Services::Api::GatewayProvisionResponse.new(msg['response']).encode)
       else
@@ -258,7 +209,7 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
     @logger.info("Binding request for service=#{params['service_id']} options=#{req.binding_options}")
 
     Fiber.new {
-      msg = bind_brokered_service_instance(req.label, req.service_id, req.binding_options)
+      msg = bind_appdirect_service_instance(req.label, req.service_id, req.binding_options)
       if msg['success']
         async_reply(VCAP::Services::Api::GatewayBindResponse.new(msg['response']).encode)
       else
@@ -271,95 +222,26 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
   # Unprovisions a brokered service instance
   delete "/gateway/v1/configurations/:service_id" do
     @logger.debug("Unprovision request for service_id=#{params['service_id']}")
-    # simply return ok
-    "{}"
+    Fiber.new {
+      #TODO
+    }.resume
+    async_mode
   end
 
   # Unbinds a brokered service instance
   delete "/gateway/v1/configurations/:service_id/handles/:handle_id" do
     @logger.info("Unbind request for service_id=#{params['service_id']} handle_id=#{params['handle_id']}")
-    # simply return ok
-    "{}"
+    Fiber.new {
+      #TODO
+    }.resume
+    async_mode
   end
 
   ################## Helpers ###################
   #
   helpers do
 
-    def advertise_brokered_service(request)
-      @logger.debug("Advertise a brokered service: #{request.inspect}")
-      label = request.label
-      des = request.description
-      options = request.options
-
-      options.each do |opt|
-        opt = VCAP.symbolize_keys(opt)
-        svc = {}
-        name, version = VCAP::Services::Api::Util.parse_label(label)
-        svc[:label] = "#{name}_#{opt[:name]}-#{version}"
-        svc[:active] = true
-        svc[:description] = "#{des} (option '#{opt[:name]}')"
-        # Add required fields
-        svc[:acls] = opt[:acls]
-        svc[:url] = "http://#{@external_uri}"
-        svc[:plans] = ["default"]
-        svc[:tags] = ["default"]
-
-        # update or create local database entry
-        bsvc = BrokeredService.get(svc[:label])
-        if bsvc.nil?
-          bsvc = BrokeredService.new
-          bsvc.label = svc[:label]
-          bsvc.version = version
-          bsvc.name = name
-        end
-        bsvc.credentials = opt[:credentials]
-        bsvc.acls = opt[:acls]
-        result = advertise_brokered_service_to_cc(svc)
-        if result
-          if not bsvc.save
-            @logger.error("Can't save entry to local database: #{bsvc.errors.inspect}")
-          end
-        end
-      end
-      success()
-    rescue => e
-      if e.instance_of? ServiceError
-        return failure(e)
-      else
-        @logger.warn("Can't advertise brokered service label=#{request.label}: #{fmt_error(e)}")
-        return internal_fail
-      end
-    end
-
-    def delete_brokered_service(label)
-      @logger.debug("Delete brokerd service: label=#{label}")
-      name, version = VCAP::Services::Api::Util.parse_label(label)
-      # Fetch all labels with given name
-      bsvcs = BrokeredService.all(:name => name, :version => version)
-
-      raise ServiceError.new(ServiceError::NOT_FOUND, "label #{label}") if bsvcs.empty?
-      bsvcs.each do |bsvc|
-        # TODO what if we got 404 error when delete a service?
-        result = delete_offerings(bsvc.label)
-        if not result
-          next
-        end
-        if not bsvc.destroy
-          @logger.error("Can't delete brokered service from local database: #{bsvc.errors.inspect}")
-        end
-      end
-      success()
-    rescue => e
-      if e.instance_of? ServiceError
-        return failure(e)
-      else
-        @logger.warn("Can't delete brokered service label=#{label}: #{fmt_error(e)}")
-        return internal_fail
-      end
-    end
-
-    def advertise_brokered_service_to_cc(offering)
+    def advertise_appdirect_service_to_cc(offering)
       @logger.debug("advertise service offering to cloud_controller:#{offering.inspect}")
       return false unless offering
 
@@ -411,16 +293,33 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
       return false
     end
 
-    def provision_brokered_service(request)
-      bsvc = BrokeredService.get(request.label)
-      if bsvc
-        svc = {
-          :data => {:plan => request.plan},
-          :credentials => bsvc.credentials,
-          :service_id => UUIDTools::UUID.random_create.to_s,
+    def provision_appdirect_service(request)
+      appdirect_svc = AppDirectService.get(request.label)
+      if appdirect_svc
+        order = {
+          "email" => request.email,
+          "productName" => request.name,
+          "plan" => request.plan,
+          "productId" => request.label
         }
-        @logger.debug("Brokered service provisioned #{svc.inspect}")
-        success(svc)
+
+        # TODO: Consider doing a lookup in appdirect to get a user id by email
+        user_id = request.email
+        receipt = @helper.purchase_service(order, user_id)
+
+        if receipt
+          credentials = receipt["credentials"]
+          @logger.debug("AppDirect service provisioned #{svc.inspect}")
+          svc = {
+            :data => {:plan => receipt["data"]["plan"]},
+            :credentials => credentials,
+            :service_id => receipt["order"],
+          }
+          success(svc)
+        else
+          @logger.warn("Invalid request to provision service label=#{request.label}")
+          raise ServiceError.new(ServiceError::NOT_FOUND, request.label)
+        end
       else
         @logger.warn("Can't find service label=#{request.label}")
         raise ServiceError.new(ServiceError::NOT_FOUND, request.label)
@@ -434,8 +333,8 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
       end
     end
 
-    def bind_brokered_service_instance(label, instance_id, binding_options, bind_handle=nil)
-      bsvc = BrokeredService.get(label)
+    def bind_appdirect_service_instance(label, instance_id, binding_options, bind_handle=nil)
+      bsvc = AppDirectService.get(label)
       if bsvc
         binding = {
           :configuration => {:data => {:binding_options => binding_options}},

@@ -80,7 +80,7 @@ if config_file
     exit 1
   end
 
-  label ||= "#{config[:service][:name]}-#{config[:service][:version]}"
+  label ||= "#{config[:services][:name]}-#{config[:services][:version]}"
   token ||= config[:token]
   cld_ctrl_uri ||= "http://#{config[:cloud_controller][:host]}:#{config[:cloud_controller][:port]}"
 end

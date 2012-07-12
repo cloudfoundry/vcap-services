@@ -147,7 +147,7 @@ class VCAP::Services::Serialization::Server < Sinatra::Base
   get "/serialized/:service/:service_id/snapshots/:snapshot_id" do
     token = params[:token]
     error(403) unless token
-    service = params[:service]
+    service = params[:services]
     service_id = params[:service_id]
     snapshot_id = params[:snapshot_id]
     @logger.debug("Get serialized data for service=#{service}, service_id=#{service_id}, snapshot_id=#{snapshot_id}")
