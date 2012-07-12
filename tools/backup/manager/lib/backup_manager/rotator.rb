@@ -36,17 +36,8 @@ class VCAP::Services::Backup::Rotator
       each_subdirectory(ab) do |cd|
         each_subdirectory(cd) do |ef|
           each_subdirectory(ef) do |guid|
-            if ins_list && !ins_list.include?(File.basename(guid))
-              if 'mysql' == File.basename(service)
-                mysql_extra_prunes |= Dir.entries(guid).delete_if{|x| dotty(x)}
-              end
-              prune(guid)
-            else
-              if 'mysql' == File.basename(service)
-                mysql_extra_saves |= Dir.entries(guid).delete_if{|x| dotty(x)}
-              end
-              rotate(guid)
-            end
+            # if this guid is unprovisioned, then manager only keeps its backup for max_days
+            rotate(guid, :prune_last => ins_list && !ins_list.include?(File.basename(guid)))
           end
         end
       end
@@ -54,11 +45,6 @@ class VCAP::Services::Backup::Rotator
     # special case: for mysql we should take care of system data
     # $root/mysql/{information_schema|mysql}/timestamp
     if service == File.join(@manager.root, "mysql")
-      mysql_extra_prunes -= mysql_extra_saves
-      mysql_extra_prunes.each do |p|
-        prune(File.join(service,"information_schema",p))
-        prune(File.join(service,"mysql",p))
-      end
       rotate(File.join(service, "information_schema"))
       rotate(File.join(service, "mysql"))
     end
@@ -68,7 +54,10 @@ class VCAP::Services::Backup::Rotator
     @manager.logger.error("#{self.class}: Exception while running: #{x.message}, #{x.backtrace.join(', ')}")
   end
 
-  def rotate(dir)
+  # options:
+  #   :prune_last -- Generally, rotate will keep a latest backup even if that one was outdated
+  #                  But if this option is set to true, then rotate will prune all outdated backups
+  def rotate(dir, opt={})
     if File.directory? dir then
       backups = {}
       each_subdirectory(dir) do |backup|
@@ -79,7 +68,7 @@ class VCAP::Services::Backup::Rotator
           @manager.logger.warn("Ignoring invalid backup #{backup}")
         end
       end
-      prune_all(backups)
+      prune_all(backups, opt)
     else
       @manager.logger.error("#{self.class}: #{dir} does not exist");
     end
@@ -98,10 +87,10 @@ class VCAP::Services::Backup::Rotator
     nil
   end
 
-  def prune_all(backups)
+  def prune_all(backups, opt={})
     ancient = n_midnights_ago(@options[:max_days])
     latest_time = backups.keys.max
-    if latest_time && latest_time<ancient
+    if !opt[:prune_last] && latest_time && latest_time < ancient
       #if no backup has been taken place in max_days, then retain
       #the latest one and prune all others
       retain(backups[latest_time],latest_time)

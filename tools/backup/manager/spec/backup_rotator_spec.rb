@@ -132,13 +132,12 @@ describe BackupRotatorTests do
     end
   end
 
-  it "should prune the backup that CC don't know" do
+  it "should rotate the backup whose handles are not known by CC" do
     EM.run do
-
       cc = BackupRotatorTests::MockCloudController.new
       cc.start
       EM.add_timer(1) do
-        Fiber.new {
+        Fiber.new do
           opts = @options.merge({
           :cloud_controller_uri => "localhost:#{BackupRotatorTests::CC_PORT}",
           :services => {
@@ -149,9 +148,12 @@ describe BackupRotatorTests do
         })
         BackupRotatorTests.create_rotator('cc_test',opts) do |rotator|
           rotator.run.should be_true
-          rotator.pruned.length.should == 4
+          # retain the unknown backup that is within max_days
+          rotator.retained('mysql/d1/47/c8/d147c836e304443d1919020da1306a755/1263978220').should be_true
+          # prune the unknown backup that is outdated even it is the last one
+          rotator.pruned('mongodb/73/12/9c/73129c3a-734e-4f3e-a60e-bdefd371f1e6/1163978520').should be_true
         end
-        }.resume
+        end.resume
       end
       EM.add_timer(4) do
         cc.stop
