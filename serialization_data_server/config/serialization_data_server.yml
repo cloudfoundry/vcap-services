@@ -3,7 +3,10 @@ serialization_base_dir: /var/vcap/services
 pid: /var/vcap/sys/run/serialized_data_server.pid
 mbus: nats://localhost:4222
 ip_route: localhost
+cloud_controller_uri: api.vcap.me
 external_uri: dl.vcap.me
+upload_token: dlfoosecret
+expire_time: 7200 # in sec
 logging:
   level: debug
 redis:
