@@ -1,0 +1,33 @@
+---
+capacity: 200
+plan: free
+local_db: sqlite3:/var/vcap/services/filesystem/filesystem_node.db
+mbus: nats://localhost:4222
+index: 0
+base_dir: /var/vcap/services/filesystem/instances
+ip_route: 127.0.0.1
+logging:
+  level: debug
+pid: /var/vcap/sys/run/filesystem_node.pid
+node_id: filesystem_node_free_1
+# z_interval: 30
+# op_time_limit: 6
+fs_type: nfs
+quota: 1024
+wake_interval: 1
+redis:
+  ip: 127.0.0.1
+  port: 1234
+  passwd: password
+
+#fs_type: nfs
+#backends:
+#  - host: 10.0.0.1
+#    export: /home/nfs/backend
+#    mount: /var/vcap/services/filesystem/backends/backend1
+#  - host: 10.0.0.2
+#    export: /home/nfs/backend
+#    mount: /var/vcap/services/filesystem/backends/backend2
+#  - host: 10.0.0.3
+#    export: /home/nfs/backend
+#    mount: /var/vcap/services/filesystem/backends/backend3

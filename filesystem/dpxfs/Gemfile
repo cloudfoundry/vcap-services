@@ -1,0 +1,7 @@
+source :rubygems
+
+group :test do
+  gem "uuidtools"
+  gem "rake"
+  gem "rspec"
+end
