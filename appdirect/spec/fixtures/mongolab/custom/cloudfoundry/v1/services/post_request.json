@@ -1,0 +1,16 @@
+{
+    "user" : {
+        "uuid" : "ifweknowtheuuid",
+        "email" : "someone@vmware.com"
+    },
+    "offering" : {
+        "id" : "mongolab_production"
+    },
+    "configuration" : {
+        "plan" : "free",
+        "name" : "abc",
+        "options" : {
+            "cloud" : "joyent-cloud"
+        }
+    }
+}

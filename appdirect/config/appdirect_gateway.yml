@@ -1,0 +1,27 @@
+---
+cloud_controller_uri: api.vcap.me
+ip_route: localhost
+external_uri: appdirect.vcap.me
+ip_route: localhost
+#proxy:
+#   host: proxy
+#   port: 8080
+#   keepalive: true
+index: 0
+token: "0xdeadbeef"
+mbus: nats://localhost:4222
+logging:
+  level: debug
+pid: /var/vcap/sys/run/appdirect_service.pid
+local_db: sqlite3:/var/vcap/services/appdirect/appdirect.db
+
+# appdirect configuration
+# Not configured by default as it would require revealing
+# credentials to a non-local resource.
+appdirect:
+  scheme: https
+  host: "dev3cloudfoundry.appdirect.com"
+  port: "443"
+  key: "k"
+  secret: "s"
+

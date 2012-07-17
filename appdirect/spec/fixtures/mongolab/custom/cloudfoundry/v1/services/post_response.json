@@ -1,0 +1,21 @@
+{
+    "uuid" : "this-came-from-appdirect",
+    "id" : "this-came-from-mongolab",
+    "user" : {
+        "uuid" : "ifweknowtheuuid",
+        "email" : "someone@vmware.com"
+    },
+    "offering" : {
+        "id" : "mongolab_production"
+    },
+    "configuration" : {
+        "plan" : "free",
+        "name" : "my-db",
+        "options" : {
+            "cloud" : "joyent-cloud"
+        }
+    },
+    "credentials": {
+        "name": "d8aca7a7dc1984da49abf58c033a38b24"
+    }
+}
