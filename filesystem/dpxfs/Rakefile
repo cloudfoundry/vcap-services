@@ -1,0 +1,33 @@
+require 'rake'
+
+MTDIR   = "/tmp/dpxfs/mtdir"
+ROOTDIR = "/tmp/dpxfs/rootdir"
+
+desc "Run specs"
+task :spec => ["test:setup", "test:spec", "test:teardown", "clean"]
+
+task :build do
+  Dir.chdir('src') { sh "make" }
+end
+
+task :clean do
+  Dir.chdir('src') { `make clean` }
+end
+
+namespace "test" do
+  task :setup => [:build] do
+    FileUtils.mkdir_p(MTDIR)
+    FileUtils.mkdir_p(ROOTDIR)
+    sh "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:./packages/fuse/lib/:./packages/hiredis/lib/ REDIS_IP=localhost REDIS_PORT=1234 REDIS_PASSWD=password FSS_NODE_ID=fss_node_id FSS_ID=testid QUOTA=1024 ROOT_DIR=#{ROOTDIR} ./src/dpxfs #{MTDIR}"
+  end
+
+  task :teardown do
+    `pkill -f dpxfs; sudo umount -l #{MTDIR}`
+    FileUtils.rm_rf(ROOTDIR)
+    FileUtils.rm_rf(MTDIR)
+  end
+
+  task "spec" do |t|
+    sh("cd spec && rake spec")
+  end
+end
