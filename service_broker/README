@@ -1,1 +1,51 @@
 Cloud Foundry Service Broker enables consumption of legacy, non-CF services by CF apps using standard Cloud Foundry APIs and bindings.
+
+== Enable service broker in vcap_dev_setup & vcap_dev
+
+By default, vcap_dev_setup will install and config service_broker
+automatically. Nevertheless, service_broker is not in the control list of
+vcap_dev, that is to say, "vcap_dev start" will not start service_broker
+by default.
+
+So, to enable service_broker in vcap_dev, we need to hack source code. In
+vcap_components.rb, modify DEFAULT_CLOUD_FOUNDRY_EXCLUDED_COMPONENT, remove
+"service_broker" substring.
+
+== Bosh deployment manifest for service broker
+
+- name: service_broker1
+  template: service_broker
+  instances: 1
+  resource_pool: infrastructure
+  networks:
+  - name: default
+    static_ips:
+    - xxx.xxx.xxx.xxx
+  properties:
+    service_broker:
+      token: ******
+      external_uri: service-broker1.vcap.me
+
+- name: service_broker2
+  template: service_broker
+  instances: 1
+  resource_pool: infrastructure
+  networks:
+  - name: default
+    static_ips:
+    - xxx.xxx.xxx.xxx
+  properties:
+    service_broker:
+      token: ******
+      external_uri: service-broker2.vcap.me
+
+properties:
+  service_broker:
+    token: [******, ******]
+
+== How to run service broker bvt test case?
+
+We must set several environment variables to run service_broker bvt test case.
+
+export SERVICE_BROKER_URL=service-broker1.vcap.me
+export SERVICE_BROKER_TOKEN=******
