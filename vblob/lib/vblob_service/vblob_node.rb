@@ -108,7 +108,7 @@ class VCAP::Services::VBlob::Node
     @free_ports = Set.new
     options[:port_range].each {|port| @free_ports << port}
     @mutex = Mutex.new
-    @supported_versions = ["1.0"]
+    @supported_versions = ["0.51"]
   end
 
   def fetch_port(port=nil)
