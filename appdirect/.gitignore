@@ -1,0 +1,4 @@
+coverage
+spec/coverage
+.idea
+vendor/cache
