@@ -14,3 +14,4 @@ postgresql:
 logging:
   level: debug
 pid: /var/vcap/sys/run/postgresql_backup.pid
+use_warden: false
