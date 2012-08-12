@@ -11,7 +11,9 @@ require 'postgresql_service/util'
 require 'postgresql_service/provisioner'
 require 'postgresql_service/node'
 
-include VCAP::Services::Postgresql::Util
+module Boolean;end
+class ::TrueClass; include Boolean; end
+class ::FalseClass; include Boolean; end
 
 def getLogger()
   logger = Logger.new( STDOUT)
@@ -43,8 +45,20 @@ def getNodeTestConfig()
     :max_db_conns => parse_property(config, "max_db_conns", Integer),
     :restore_bin => parse_property(config, "restore_bin", String),
     :dump_bin => parse_property(config, "dump_bin", String),
-    :db_size_overhead => parse_property(config, "db_size_overhead", Float)
+    :db_size_overhead => parse_property(config, "db_size_overhead", Float),
+    :use_warden => parse_property(config, "use_warden", Boolean, :optional => true, :default => false)
   }
+  if options[:use_warden]
+    warden_config = parse_property(config, "warden", Hash, :optional => true)
+    options[:use_warden] = true
+    options[:log_dir] = parse_property(warden_config, "log_dir", String)
+    options[:port_range] = parse_property(warden_config, "port_range", Range)
+    options[:image_dir] = parse_property(warden_config, "image_dir", String)
+    options[:filesystem_quota] = parse_property(warden_config, "filesystem_quota", Integer, :optional => true)
+    options[:service_start_timeout] = parse_property(warden_config, "service_start_timeout", Integer, :optional => true, :default => 3)
+  else
+    options[:ip_route] = "127.0.0.1"
+  end
   options
 end
 
@@ -60,4 +74,20 @@ def getProvisionerTestConfig()
     :mbus => config[:mbus]
   }
   options
+end
+
+def parse_property(hash, key, type, options = {})
+  obj = hash[key]
+  if obj.nil?
+    raise "Missing required option: #{key}" unless options[:optional]
+    options[:default]
+  elsif type == Range
+    raise "Invalid Range object: #{obj}" unless obj.kind_of?(Hash)
+    first, last = obj["first"], obj["last"]
+    raise "Invalid Range object: #{obj}" unless first.kind_of?(Integer) and last.kind_of?(Integer)
+    Range.new(first, last)
+  else
+    raise "Invalid #{type} object: #{obj}" unless obj.kind_of?(type)
+    obj
+  end
 end
