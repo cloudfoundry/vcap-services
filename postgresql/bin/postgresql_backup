@@ -41,6 +41,8 @@ class VCAP::Services::Postgresql::Backup < VCAP::Services::Base::Backup
       :backup_path => @config["backup_base_dir"]
     }
 
+    use_warden= @config["use_warden"] || false
+
     missing_opts = opts.keys.select{|key| opts[key] == nil}
     unless missing_opts.empty?
       echo "Missing required configuration items #{missing_opts.inspect}",true
@@ -58,32 +60,51 @@ class VCAP::Services::Postgresql::Backup < VCAP::Services::Base::Backup
       echo "Exception while setting up the local database: #{e}"
       return 1
     end
-    conn = PGconn.connect(opts[:host], opts[:port].to_i, nil, nil, opts[:database], opts[:super_user], opts[:super_passwd])
-    result = conn.query("select * from pg_database;")
-    dbs = []
-    result.each {|db| dbs << db['datname'] }
+
+    service_class = VCAP::Services::Postgresql::Node::getProvisionedService(use_warden)
+
+    if use_warden
+      dbs = service_class.all
+    else
+      conn = PGconn.connect(opts[:host], opts[:port].to_i, nil, nil, opts[:database], opts[:super_user], opts[:super_passwd])
+      result = conn.query("select * from pg_database;")
+      dbs = []
+      result.each {|db| dbs << db['datname'] }
+    end
+
     current_time = Time.now
 
     echo "Begin backup at #{current_time}"
     success, failed, ignored = [0,0,0]
-    dbs.each do |name|
-      provisionedservice = VCAP::Services::Postgresql::Node::Provisionedservice.get(name)
+    dbs.each do |db|
+
+      if db.is_a?String
+        provisionedservice = service_class.get(db)
+        name = db
+      else
+        provisionedservice = db
+        name = db.name
+      end
 
       if provisionedservice.nil?
         # not provisioned database
-        exe_user = opts[:super_user]
-        exe_passwd = opts[:super_passwd]
-        result = exe_backup_db(opts.merge({:name => name, :ts => current_time, :user => exe_user, :passwd => exe_passwd }))
+        if use_warden
+          result = -1
+        else
+          exe_user = opts[:super_user]
+          exe_passwd = opts[:super_passwd]
+          result = exe_backup_db(opts.merge({:name => name, :ts => current_time, :user => exe_user, :passwd => exe_passwd }))
+        end
       else
         # provisioed database
-        default_user = provisionedservice.bindusers.all(:default_user => true)[0]
+        default_user = provisionedservice.pgbindusers.all(:default_user => true)[0]
         if default_user.nil?
           echo "The provisioned service with name #{name} has no default user ."
           result = 1
         else
           exe_user = default_user[:user]
           exe_passwd = default_user[:password]
-          result = exe_backup_db(opts.merge({:name => name, :ts => current_time, :user => exe_user, :passwd => exe_passwd }))
+          result = exe_backup_db(opts.merge({:name => name, :ts => current_time, :user => exe_user, :passwd => exe_passwd, :port => (provisionedservice.port||opts[:port])}))
         end
       end
 
