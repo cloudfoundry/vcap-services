@@ -34,6 +34,7 @@ module VCAP::Services::Postgresql::Snapshot
     end
 
     def dump_db(name, snapshot_id)
+      use_warden = @config['use_warden'] || false
       # dump file
       dump_path = get_dump_path(name, snapshot_id)
       FileUtils.mkdir_p(dump_path) unless File.exists?(dump_path)
@@ -45,8 +46,8 @@ module VCAP::Services::Postgresql::Snapshot
       # setup DataMapper
       VCAP::Services::Postgresql::Node.setup_datamapper(:default, @config['local_db'])
       # prepare the command
-      provisionedservice = VCAP::Services::Postgresql::Node::Provisionedservice.get(name)
-      default_user = provisionedservice.bindusers.all(:default_user => true)[0]
+      provisionedservice = VCAP::Services::Postgresql::Node::pgProvisionedServiceClass(use_warden).get(name)
+      default_user = provisionedservice.pgbindusers.all(:default_user => true)[0]
       if default_user.nil?
         @logger.error("The provisioned service with name #{name} has no default user")
         raise "Failed to dump database of #{name}"
@@ -54,6 +55,9 @@ module VCAP::Services::Postgresql::Snapshot
       user = default_user[:user]
       passwd = default_user[:password]
       host, port = %w(host port).map{ |k| postgre_conf[k] }
+      if use_warden
+        host = provisionedservice.ip
+      end
 
       # dump the database
       dump_database(name, host, port, user, passwd, dump_file_name ,{ :dump_bin => @config["dump_bin"], :logger => @logger})
@@ -77,17 +81,21 @@ module VCAP::Services::Postgresql::Snapshot
     end
 
     def restore_db(name, snapshot_id)
-
+      use_warden = @config['use_warden'] || false
       VCAP::Services::Postgresql::Node.setup_datamapper(:default, @config["local_db"])
-      service = VCAP::Services::Postgresql::Node::Provisionedservice.get(name)
+      service = VCAP::Services::Postgresql::Node::pgProvisionedServiceClass(use_warden).get(name)
       raise "No information for provisioned service with name #{name}." unless service
-      default_user = service.bindusers.all(:default_user => true)[0]
+      default_user = service.pgbindusers.all(:default_user => true)[0]
       raise "No default user for service #{name}." unless default_user
 
       dump_file_name = @snapshot_files[0]
       raise "Can't find snapshot file #{snapshot_file_path}" unless File.exists?(dump_file_name)
 
       host, port, vcap_user, vcap_pass = %w(host port user pass).map{ |k| @config["postgresql"][k]}
+
+      if use_warden
+        host = service.ip
+      end
 
       # Need a user who is a superuser to disable db access and then kill all live sessions first
       reset_db(host, port, vcap_user, vcap_pass, name, service)
