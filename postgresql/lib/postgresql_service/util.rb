@@ -1,4 +1,6 @@
 # Copyright (c) 2009-2011 VMware, Inc.
+require 'pg'
+
 module VCAP
   module Services
     module Postgresql
@@ -7,21 +9,7 @@ module VCAP
       module Util
         VALID_CREDENTIAL_CHARACTERS = ("A".."Z").to_a + ("a".."z").to_a + ("0".."9").to_a
 
-        def parse_property(hash, key, type, options = {})
-          obj = hash[key]
-          if obj.nil?
-            raise "Missing required option: #{key}" unless options[:optional]
-            nil
-          elsif type == Range
-            raise "Invalid Range object: #{obj}" unless obj.kind_of?(Hash)
-            first, last = obj["first"], obj["last"]
-            raise "Invalid Range object: #{obj}" unless first.kind_of?(Integer) and last.kind_of?(Integer)
-            Range.new(first, last)
-          else
-            raise "Invalid #{type} object: #{obj}" unless obj.kind_of?(type)
-            obj
-          end
-        end
+        include VCAP::Services::Base::Utils
 
         def fmt_error(e)
           "#{e}: [#{e.backtrace.join(" | ")}]"
@@ -46,6 +34,19 @@ module VCAP
 
         def generate_credential(length=12)
           Array.new(length) { VALID_CREDENTIAL_CHARACTERS[rand(VALID_CREDENTIAL_CHARACTERS.length)] }.join
+        end
+
+        # shell CMD wrapper and logger
+        def exe_cmd(cmd, env={}, stdin=nil)
+          @logger ||= create_logger
+          @logger.debug("Execute shell cmd:[#{cmd}]")
+          o, e, s = Open3.capture3(env, cmd, :stdin_data => stdin)
+          if s.exitstatus == 0
+            @logger.info("Execute cmd:[#{cmd}] succeeded.")
+          else
+            @logger.error("Execute cmd:[#{cmd}] failed. Stdin:[#{stdin}], stdout: [#{o}], stderr:[#{e}]")
+          end
+          return [o, e, s]
         end
 
         # Return the version of postgresql
@@ -153,6 +154,14 @@ module VCAP
         end
 
         # Legacy method to grant user privileges of public schema
+        def exe_grant_user_priv(conn)
+        @logger ||= create_logger
+        unless conn
+          @logger.error("No connection to do exe_grant_user_priv")
+          return
+        end
+        grant_user_priv(conn, pg_version(conn))
+        end
         def grant_user_priv(conn, version)
           return unless conn
           conn.query("grant create on schema public to public")
@@ -228,7 +237,7 @@ module VCAP
           return false unless db_connection && service
           @logger ||= Logger.new(STDOUT)
           name = service.name
-          default_user = service.bindusers.all(:default_user => true)[0]
+          default_user = service.pgbindusers.all(:default_user => true)[0]
           unless default_user
             @logger.error("No default user #{default_user} for database #{name} when granting write access")
             return false
@@ -243,7 +252,7 @@ module VCAP
             @logger.error("Fail to get public schema id")
             return false
           end
-          service.bindusers.all.each do |binduser|
+          service.pgbindusers.all.each do |binduser|
             user = binduser.user
             sys_user = binduser.sys_user
             sys_password = binduser.sys_password
@@ -275,7 +284,7 @@ module VCAP
           return false unless pgconn && db_connection && service
           @logger ||= Logger.new(STDOUT)
           name = service.name
-          default_user = service.bindusers.all(:default_user => true)[0]
+          default_user = service.pgbindusers.all(:default_user => true)[0]
           unless default_user
             @logger.warn("No default user #{default_user} for database #{name} when granting write access")
             return false
@@ -305,10 +314,10 @@ module VCAP
           default_connection.close if default_connection
 
           # revoke temp privilege on the database
-          service.bindusers.all.each do |binduser|
+          service.pgbindusers.all.each do |binduser|
             user = binduser.user
             sys_user = binduser.sys_user
-            kill_user_sessions(pgconn, user, name)
+            kill_alive_sessions(pgconn, name, user)
             db_connection.query("REVOKE TEMP ON DATABASE #{name} from #{user}")
             db_connection.query("REVOKE TEMP ON DATABASE #{name} from #{sys_user}")
             do_revoke_query(db_connection, user, sys_user)
@@ -326,15 +335,42 @@ module VCAP
         end
 
         # Drop database
+        def exe_drop_database(conn, name)
+          @logger ||= create_logger
+          unless conn
+            @logger.warn("No connection to drop database #{name}")
+            return
+          end
+          @logger.info("Deleting database: #{name}")
+          begin
+            conn.query("select pg_terminate_backend(procpid) from pg_stat_activity where datname = '#{name}'")
+          rescue PGError => e
+            @logger.warn("Could not kill database session: #{e}")
+          end
+          drop_db(conn, name)
+        end
+
         def drop_db(conn, db)
           return unless conn
           conn.query("drop database #{db}")
         end
 
         # Create database
+        def exe_create_database(conn, name, max_db_conns)
+          @logger ||= create_logger
+          unless conn
+            @logger.warn("No connection to create database #{name}")
+            return
+          end
+          @logger.debug("Maximum connections: #{max_db_conns}")
+          db_info = {}
+          db_info["datconnlimit"] = max_db_conns if max_db_conns
+          create_db(conn, name, db_info)
+        end
+
         def create_db(conn, db, db_info)
           return unless conn
-          if db_info["datconnlimit"].nil?
+          if db_info["datconnlimit"]
             conn.query("create database #{db} with connection limit = #{db_info["datconnlimit"]}")
           else
             conn.query("create database #{db}")
@@ -342,23 +378,21 @@ module VCAP
           conn.query("revoke all on database #{db} from public")
         end
 
-        # Kill all connections to database from one user
-        def kill_user_sessions(conn, target_user, target_db)
-          return unless conn
-          conn.query("select pg_terminate_backend(procpid) from pg_stat_activity where usename = '#{target_user}' and datname = '#{target_db}'")
-        end
-
         # Interrupt all activities on database
-        def kill_alive_sessions(conn, db)
+        def kill_alive_sessions(conn, db, user=nil)
           return unless conn
-          conn.query("select pg_terminate_backend(procpid) from pg_stat_activity where datname='#{db}'")
+          unless user
+            conn.query("select pg_terminate_backend(procpid) from pg_stat_activity where datname='#{db}'")
+          else
+            conn.query("select pg_terminate_backend(procpid) from pg_stat_activity where datname='#{db}' and usename = '#{user}'")
+          end
         end
 
         # Block all binding users to connect the database
         def block_user_from_db(db_connection, service)
           name = service.name
-          default_user = service.bindusers.all(:default_user => true)[0]
-          service.bindusers.all.each do |binduser|
+          default_user = service.pgbindusers.all(:default_user => true)[0]
+          service.pgbindusers.all.each do |binduser|
             if binduser.default_user == false
               db_connection.query("revoke #{default_user.user} from #{binduser.user}")
               db_connection.query("revoke connect on database #{name} from #{binduser.user}")
@@ -370,8 +404,8 @@ module VCAP
         # Permit all binding usrs to connect the database
         def unblock_user_from_db(db_connection, service)
           name = service.name
-          default_user = service.bindusers.all(:default_user => true)[0]
-          service.bindusers.all.each do |binduser|
+          default_user = service.pgbindusers.all(:default_user => true)[0]
+          service.pgbindusers.all.each do |binduser|
             if binduser.default_user == false
               db_connection.query("GRANT CONNECT ON DATABASE #{name} to #{binduser.user}")
               db_connection.query("GRANT CONNECT ON DATABASE #{name} to #{binduser.sys_user}")
@@ -383,7 +417,7 @@ module VCAP
         # Block all users to connec the database
         def disable_db_conn(conn, db, service)
           return unless conn && service
-          service.bindusers.each do |binduser|
+          service.pgbindusers.each do |binduser|
             conn.query("revoke connect on database #{db} from #{binduser.user}")
             conn.query("revoke connect on database #{db} from #{binduser.sys_user}")
           end
@@ -392,16 +426,20 @@ module VCAP
         # Enable all users to connect the dtabase
         def enable_db_conn(conn, db, service)
           return unless conn && service
-          service.bindusers.each do |binduser|
+          service.pgbindusers.each do |binduser|
             conn.query("grant connect on database #{db} to #{binduser.user}")
             conn.query("grant connect on database #{db} to #{binduser.sys_user}")
           end
         end
 
-        # Execute shell command and return the status and output
-        def execute_shell_cmd(cmd, env={}, stdin=nil, logger=nil)
-          o, e, s = Open3.capture3(env, cmd, :stdin_data => stdin)
-          [o, e, s]
+        # Check whether a connection is alive
+        def connection_exception(conn)
+          conn.query("select current_timestamp")
+          return nil
+        rescue => e
+          @logger ||= create_logger
+          @logger.warn("PostgreSQL connection #{(conn.inspect if conn)} lost: #{e}")
+          return e
         end
 
         # Drop the database and re-create it for restoring/rolling back
@@ -459,7 +497,7 @@ module VCAP
         def archive_list(dump_file, opts = {})
           restore_bin = opts[:restore_bin] || 'pg_restore'
           cmd = "#{restore_bin} -l #{dump_file} | grep -v 'PROCEDURAL LANGUAGE - plpgsql' > #{dump_file}.archive_list"
-          o, e, s = execute_shell_cmd(cmd)
+          o, e, s = exe_cmd(cmd)
           return s.exitstatus == 0
         end
 
@@ -482,10 +520,123 @@ module VCAP
           restore_cmd = "#{restore_bin} -h #{host} -p #{port} -U #{user} -L #{dump_file}.archive_list -d #{name} #{dump_file} "
 
           # running the command
-          o, e, s = execute_shell_cmd(restore_cmd)
+          o, e, s = exe_cmd(restore_cmd)
           s.exitstatus == 0
         ensure
           FileUtils.rm_rf("#{dump_file}.archive_list")
+        end
+
+        def is_default_bind_user(user_name)
+          if respond_to?(:pgBindUser)
+            user = pgBindUser.get(user_name)
+            !user.nil? && user.default_user
+          else
+            return false
+          end
+        end
+
+        def kill_long_queries_internal(connection, super_user, max_long_query)
+          @logger ||= create_logger
+          long_queries_killed = 0
+          unless connection && super_user && max_long_query
+            @logger.warn("Invalid parameters to kill long queries: #{connection}, #{super_user}, #{max_long_query}")
+            return long_queries_killed
+          end
+
+          begin
+            # (extract(epoch from current_timestamp) - extract(epoch from query_start)) as runtime
+            # Notice: we should use current_timestamp or timeofday, the difference is that the current_timestamp only executed once at the beginning of the transaction, while dayoftime will return a text string of wall-clock time and advances during the transaction
+            # Filtering the long queries in the pg statement is better than filtering using the iteration of ruby after select all activties
+            process_list = connection.query("select * from (select procpid, datname, query_start, usename, (extract(epoch from current_timestamp) - extract(epoch from query_start)) as run_time from pg_stat_activity where query_start is not NULL and usename != '#{super_user}' and current_query !='<IDLE>') as inner_table  where run_time > #{max_long_query}")
+            process_list.each do |proc|
+              unless is_default_bind_user(proc["usename"])
+                connection.query("select pg_terminate_backend(#{proc['procpid']})")
+                @logger.info("Killed long query: user:#{proc['usename']} db:#{proc['datname']} time:#{Time.now.to_i - Time::parse(proc['query_start']).to_i} info:#{proc['current_query']}")
+                long_queries_killed += 1
+              end
+            end
+          rescue PGError => e
+            @logger.warn("PostgreSQL error: #{e}")
+          end
+          long_queries_killed
+        end
+
+        def kill_long_transaction_internal(connection, super_user, max_long_tx)
+          @logger ||= create_logger
+          long_tx_killed = 0
+          unless connection && super_user && max_long_tx
+            @logger.warn("Invalid parameters to kill long tx: #{connection}, #{super_user}, #{max_long_tx}")
+            return long_tx_killed
+          end
+          begin
+            # see kill_long_queries
+            process_list = connection.query("select * from (select procpid, datname, xact_start, usename, (extract(epoch from current_timestamp) - extract(epoch from xact_start)) as run_time from pg_stat_activity where xact_start is not NULL and usename != '#{super_user}') as inner_table where run_time > #{max_long_tx}")
+            process_list.each do |proc|
+              unless is_default_bind_user(proc["usename"])
+                connection.query("select pg_terminate_backend(#{proc['procpid']})")
+                @logger.info("Killed long transaction: user:#{proc['usename']} db:#{proc['datname']} active_time:#{Time.now.to_i - Time::parse(proc['xact_start']).to_i}")
+                long_tx_killed += 1
+              end
+            end
+          rescue PGError => e
+            @logger.warn("PostgreSQL error: #{e}")
+          end
+          long_tx_killed
+        end
+
+        def get_db_stat_by_connection(connection, max_db_size)
+          @logger ||= create_logger()
+          sys_dbs = ['template0', 'template1', 'postgres']
+          result = []
+          return result unless connection
+          db_stats = connection.query('select datid, datname, version() as version from pg_stat_database')
+          db_stats.each do |d|
+            name = d["datname"]
+            oid = d["datid"]
+            version = d["version"]
+            next if sys_dbs.include?(name)
+            db = {}
+            # db name
+            db[:name] = name
+            # db verison
+            db[:version] = version
+            # db max size
+            db[:max_size] = max_db_size
+            # db actual size
+            sizes = connection.query("select pg_database_size('#{name}')")
+            db[:size] = sizes[0]['pg_database_size'].to_i
+            # db active connections
+            a_s_ps = connection.query("select pg_stat_get_db_numbackends(#{oid})")
+            db[:active_server_processes] = a_s_ps[0]['pg_stat_get_db_numbackends'].to_i
+            result << db
+          end
+          result
+        rescue => e
+          @logger.warn("Error during generate varz/db_stat: #{e}")
+          []
+        end
+
+        def get_db_list_by_connection(connection)
+          @logger ||= create_logger
+          db_list = []
+          return db_list unless connection
+          connection.query('select datname,datacl from pg_database').each{ |message|
+            datname = message['datname']
+            datacl = message['datacl']
+            if not datacl==nil
+              users = datacl[1,datacl.length-1].split(',')
+              for user in users
+                if user.split('=')[0].empty?
+                else
+                  db_list.push([datname, user.split('=')[0]])
+                end
+              end
+            end
+          }
+          db_list
+        rescue => e
+          @logger.error("Fail to get db list using connection #{connection} for #{fmt_error(e)}")
+          []
         end
 
       end
