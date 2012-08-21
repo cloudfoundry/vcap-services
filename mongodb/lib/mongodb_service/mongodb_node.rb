@@ -369,6 +369,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
       @max_disk            = args[:max_disk] ? args[:max_disk] : 128
       @quota               = args[:filesystem_quota] || false
       @@mongod_path        = args[:mongod_path] ? args[:mongod_path] : { args[:default_version] => 'mongod' }
+      @@mongod_options     = args[:mongod_options] ? args[:mongod_options] : { args[:default_version] => '' }
       @@mongorestore_path  = args[:mongorestore_path] ? args[:mongorestore_path] : { args[:default_version] => 'mongorestore' }
       @@mongodump_path     = args[:mongodump_path] ? args[:mongodump_path] : { args[:default_version] => 'mongodump' }
       @@tar_path           = args[:tar_path] ? args[:tar_path] : 'tar'
@@ -499,7 +500,15 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
   end
 
   def service_script
-    "mongod_startup.sh"
+    if version == "1.8"
+      "mongod_startup.sh 18"
+    elsif version == "2.0"
+      if mongod_exe_options == "--nojournal"
+        "mongod_startup.sh 20 --nojournal"
+      else
+        "mongod_startup.sh 20"
+      end
+    end
   end
 
   # diretory helper
@@ -512,7 +521,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     warden = self.class.warden_connect
     req = Warden::Protocol::RunRequest.new
     req.handle = self[:container]
-    req.script = "mongo localhost:27017/admin --eval 'db.addUser(\"#{username}\", \"#{password}\")'"
+    req.script = "#{mongo} localhost:27017/admin --eval 'db.addUser(\"#{username}\", \"#{password}\")'"
     rsp = warden.call(req)
     warden.disconnect
   rescue => e
@@ -586,6 +595,18 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
 
   def mongod
     @@mongod_path[version] || @@mongod_path[version.to_sym]
+  end
+
+  def mongo
+    if version == "1.8"
+      "/usr/share/mongodb/mongodb18/mongo"
+    elsif version == "2.0"
+      "/usr/share/mongodb/mongodb20/mongo"
+    end
+  end
+
+  def mongod_exe_options
+    @@mongod_options[version] || @@mongod_options[version.to_sym]
   end
 
   def mongorestore
