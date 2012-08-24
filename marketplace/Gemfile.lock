@@ -32,10 +32,10 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-services-base.git
-  revision: e54a821c72f1733a333442c7b123a17941c8ed1e
-  ref: e54a821c
+  revision: e65cfe7d5aea768f2904969562ce796575869c4b
+  ref: e65cfe7d
   specs:
-    vcap_services_base (0.1.14)
+    vcap_services_base (0.1.16)
       curb (~> 0.7.16)
       datamapper (~> 1.1.0)
       do_sqlite3 (~> 0.10.3)
