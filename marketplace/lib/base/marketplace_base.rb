@@ -16,7 +16,7 @@ module VCAP
         def get_catalog
           {}
         end
- 
+
         def generate_cc_advertise_request(name, bsvc, active = true)
           {}
         end
