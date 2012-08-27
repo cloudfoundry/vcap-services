@@ -146,9 +146,9 @@ class VCAP::Services::VBlob::Node
   def unprovision(name, bindings)
     @logger.info("started to unprovision vblob service: #{name}")
     provisioned_service = ProvisionedService.get(name)
-    occupied_port = provisioned_service.port
     raise ServiceError.new(ServiceError::NOT_FOUND, name) if provisioned_service.nil?
     raise "Could not cleanup service #{provisioned_service.errors.inspect}" unless provisioned_service.delete
+    occupied_port = provisioned_service.port
     free_port(occupied_port)
     @logger.info("Successfully fulfilled unprovision request: #{name}.")
     true
