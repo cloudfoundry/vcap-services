@@ -296,14 +296,26 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
         opt = VCAP.symbolize_keys(opt)
         svc = {}
         name, version = VCAP::Services::Api::Util.parse_label(label)
-        svc[:label] = "#{name}_#{opt[:name]}-#{version}"
+        svc[:label] =
         svc[:active] = true
-        svc[:description] = "#{des} (option '#{opt[:name]}')"
+        svc[:description] =
         # Add required fields
         svc[:acls] = opt[:acls]
         svc[:url] = "http://#{@external_uri}"
         svc[:plans] = ["default"]
         svc[:tags] = ["default"]
+
+        svc = VCAP::Services::Api::ServiceOfferingRequest.new({
+          :label                => "#{name}_#{opt[:name]}-#{version}",
+          :active               => true,
+          :description          => "#{des} (option '#{opt[:name]}')",
+          :acls                 => opt[:acls],
+          :url                  => "http://#{@external_uri}",
+          :plans                => ["default"],
+          :tags                 => ["default"],
+          :supported_versions   => [version],
+          :version_aliases      => {},
+        }).extract
 
         # update or create local database entry
         bsvc = BrokeredService.get(svc[:label])
