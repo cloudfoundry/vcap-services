@@ -40,9 +40,9 @@ def symbolize_keys(hash)
 end
 
 def load_appdirect_config()
-  config = YAML.load_file(File.join(File.dirname(__FILE__), "..", "..", "config", "marketplace_gateway.yml"))
+  config = YAML.load_file(File.join(File.dirname(__FILE__), "..", "config", "marketplace_gateway.yml"))
   config = symbolize_keys(config)
-  appdirect_config = YAML.load_file(File.join(File.dirname(__FILE__), "..", "..", "config", "appdirect.yml"))
+  appdirect_config = YAML.load_file(File.join(File.dirname(__FILE__), "..", "config", "appdirect.yml"))
   appdirect_config = symbolize_keys(appdirect_config)
 
   config = config.merge(appdirect_config)
@@ -50,6 +50,19 @@ def load_appdirect_config()
   config[:host] = VCAP.local_ip(config[:ip_route])
   config[:port] ||= VCAP.grab_ephemeral_port
   config[:url] = "http://#{config[:host]}:#{config[:port]}"
+
+  config
+end
+
+def load_test_config()
+  config = YAML.load_file(File.join(File.dirname(__FILE__), "..", "config", "test_marketplace_gateway.yml"))
+  config = symbolize_keys(config)
+
+  test_config = YAML.load_file(File.join(File.dirname(__FILE__), "..", "config", "test.yml"))
+  test_config = symbolize_keys(test_config)
+
+  config = config.merge(test_config)
+  config[:logger] = make_logger()
 
   config
 end
@@ -63,3 +76,5 @@ end
 def load_fixture(filename, resp = '{}')
   File.read("#{File.dirname(__FILE__)}/fixtures/#{filename}") rescue resp
 end
+
+
