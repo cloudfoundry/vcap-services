@@ -139,6 +139,20 @@ describe "Mysql server node" do
             EM.add_timer(2) do
               conn = connect_to_mysql(binding)
               expect{ conn.query("insert into test value('test')")}.should_not raise_error
+            end
+          end
+        end
+        EM.add_timer(9) do
+          conn.query("insert into test value('#{content}')")
+          EM.add_timer(3) do
+            expect {conn.query('SELECT 1')}.should raise_error
+            conn.close
+            conn = connect_to_mysql(binding)
+            conn.query("drop table test")
+            EM.add_timer(2) do
+              conn = connect_to_mysql(binding)
+              expect { conn.query("create table test(data text)") }.should_not raise_error
+              expect { conn.query("insert into test value('test')") }.should_not raise_error
               EM.stop
             end
           end
