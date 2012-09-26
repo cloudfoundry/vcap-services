@@ -125,6 +125,8 @@ class VCAP::Services::MongoDB::Node
     p_service.add_user(p_service.admin, p_service.adminpass)
     p_service.add_user(username, password)
 
+    p_service.run_cmd()
+
     host = get_host
     response = {
       "hostname" => host,
