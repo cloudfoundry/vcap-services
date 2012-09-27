@@ -24,6 +24,7 @@ type ProxyConfig struct {
     }
 
     FILTER struct {
+        FS_RESERVED_BLOCKS float64
         INTERVAL uint32
         THRESHOLD float64
     }
@@ -168,12 +169,12 @@ func Start(conf ProxyConfig, proxy_log l4g.Logger) (err error) {
                     }
 
                     if event & syscall.EPOLLRDHUP != 0 {
-                        logger.Info("shutdown ...", fd)
+                        logger.Info("shutdown ...")
                         sock_close_peers(fd)
                     }
 
                     if event & syscall.EPOLLHUP != 0 {
-                        logger.Info("shutdown ...", fd)
+                        logger.Info("shutdown ...")
                         sock_close_peers(fd)
                     }
                 }

@@ -41,7 +41,7 @@ type ResponseHeader struct {
 }
 
 var filter_interval          uint32 = 3   // seconds
-var filter_threshold        float64 = 0.8
+var filter_threshold        float64 = 0.9
 
 var mongo_host               string = "127.0.0.1"
 var mongo_port               string = "27017"
@@ -49,23 +49,25 @@ var mongo_db                 string
 var mongo_user               string
 var mongo_pass               string
 
-var total_disk_size         float64 = 0.0 // kilobytes, static value
-var journal_files_size      float64 = 0.0 // kilobytes, dynamic value
-var admin_namespace_size    float64 = 0.0 // kilobytes, static value
-var admin_data_file_size    float64 = 0.0 // kilobytes, static value
-var db_namespace_size       float64 = 0.0 // kilobytes, dynamic value
-var db_data_size            float64 = 0.0 // kilobytes, dynamic value
-var db_index_size           float64 = 0.0 // kilobytes, dynamic value
+var fs_reserved_blocks      float64 = 0.05 // 5 precent of blocks are reserved
+var total_disk_size         float64 = 0.0  // bytes, static value
+var journal_files_size      float64 = 0.0  // bytes, dynamic value
+var admin_namespace_size    float64 = 0.0  // bytes, static value
+var admin_data_file_size    float64 = 0.0  // bytes, static value
+var db_namespace_size       float64 = 0.0  // bytes, dynamic value
+var db_data_size            float64 = 0.0  // bytes, dynamic value
+var db_index_size           float64 = 0.0  // bytes, dynamic value
 
 var shutdown            chan string
 
-var disk_usage              float64 = 0.0 // atomic variable ?????
-var io_block                 uint32 = 0   // 0 means not block, 1 means block
+var disk_usage              float64 = 0.0  // atomic variable ?????
+var io_block                 uint32 = 0    // 0 means not block, 1 means block
 
 var base_dir                string = "/store/instance"
 var journal_dir             string = filepath.Join(base_dir, "data", "journal")
 
 func setup_filter(conf ProxyConfig) {
+    fs_reserved_blocks = conf.FILTER.FS_RESERVED_BLOCKS
     filter_interval  = conf.FILTER.INTERVAL
     filter_threshold = conf.FILTER.THRESHOLD
 
@@ -87,7 +89,7 @@ func setup_filter(conf ProxyConfig) {
             logger.Info("Failed to get %s file system stats [%s].", base_dir, err)
             // TODO: additional handler?
         } else {
-            total_disk_size = float64(statfs.Bsize * int64(statfs.Blocks))
+            total_disk_size = float64(statfs.Bsize) * float64(int64(float64(statfs.Blocks) * float64(1.0 - fs_reserved_blocks)))
             logger.Info("Get total disk size %f.", total_disk_size)
 
             shutdown = make(chan string)
@@ -127,14 +129,14 @@ func report_disk_usage(c chan string) {
 
     db := mongo.Database{conn, "admin", mongo.DefaultLastErrorCmd}
     db.Authenticate(mongo_user, mongo_pass)
-    err = db.Run(mongo.D{{ "dbStats", 1}, {"scale", 1024 }}, &stats)
+    err = db.Run(mongo.D{{ "dbStats", 1}, {"scale", 1 }}, &stats)
     if err == nil {
-        temp, err = strconv.Atoi(fmt.Sprintf("%d", stats["nsSize"]))
-        if err != nil {
-            admin_namespace_size = float64(temp * 1024)
+        temp, err = strconv.Atoi(fmt.Sprintf("%d", stats["nsSizeMB"]))
+        if err == nil {
+            admin_namespace_size = float64(temp * 1024 * 1024)
         }
         temp, err = strconv.Atoi(fmt.Sprintf("%d", stats["fileSize"]))
-        if err != nil {
+        if err == nil {
             admin_data_file_size = float64(temp)
         }
     } else {
@@ -144,22 +146,23 @@ func report_disk_usage(c chan string) {
     fix_size := 0.0
     fix_size += admin_namespace_size
     fix_size += admin_data_file_size
+    logger.Info("Get fixed disk occupied size %f.", fix_size)
 
     for {
         db = mongo.Database{conn, mongo_db, mongo.DefaultLastErrorCmd}
         db.Authenticate(mongo_user, mongo_pass)
-        err = db.Run(mongo.D{{ "dbStats", 1}, {"scale", 1024 }}, &stats)
+        err = db.Run(mongo.D{{ "dbStats", 1}, {"scale", 1 }}, &stats)
         if err == nil {
-            temp, err = strconv.Atoi(fmt.Sprintf("%d", stats["nsSize"]))
-            if err != nil {
-                db_namespace_size = float64(temp * 1024)
+            temp, err = strconv.Atoi(fmt.Sprintf("%d", stats["nsSizeMB"]))
+            if err == nil {
+                db_namespace_size = float64(temp * 1024 * 1024)
             }
             temp, err = strconv.Atoi(fmt.Sprintf("%d", stats["dataSize"]))
-            if err != nil {
+            if err == nil {
                 db_data_size = float64(temp)
             }
             temp, err = strconv.Atoi(fmt.Sprintf("%d", stats["indexSize"]))
-            if err != nil {
+            if err == nil {
                 db_index_size = float64(temp)
             }
         } else {
@@ -168,13 +171,13 @@ func report_disk_usage(c chan string) {
 
         journal_files_size = 0.0
         filepath.Walk(journal_dir, visit_file)
-        logger.Info("Get journal files size %f.", journal_files_size)
         
         occupied := fix_size
         occupied += db_namespace_size
         occupied += db_data_size
         occupied += db_index_size
         occupied += journal_files_size
+        logger.Info("Get current disk occupied size %f.", occupied)
         disk_usage = occupied / total_disk_size
         if disk_usage >= filter_threshold {
             atomic.StoreUint32(&io_block, 1)
