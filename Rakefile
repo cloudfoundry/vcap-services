@@ -40,7 +40,7 @@ namespace "bundler" do
 
   desc "Dry run update"
   task :update_dry, :oref, :nref do |t, args|
-    exec_in_svc_dir { |_| sh "sed \"s/#{args[:oref]}/#{args[:nref]}/g\" Gemfile" }
+    exec_in_svc_dir { |_| sh "sed -i \"s/#{args[:oref]}/#{args[:nref]}/g\" Gemfile" }
   end
 
   # usage: rake bundler:gerrit_vendor[gem_name,'<repo>','<refspec>']
