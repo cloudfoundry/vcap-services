@@ -8,8 +8,9 @@ task "tests" do |t|
 end
 
 namespace "bundler" do
-  def exec_in_svc_dir
-    SERVICES_DIR.each do |dir|
+  def exec_in_svc_dir(ng)
+    services_dir = ng=="false" ? SERVICES_DIR : NG_SERVICES_DIR
+    services_dir.each do |dir|
       puts ">>>>>>>> enter #{dir}"
       Dir.chdir(dir) do
         yield dir
@@ -34,18 +35,21 @@ namespace "bundler" do
 
   # usage: rake bundler:update[oldref,newref]
   desc "Update git ref in Gemfile"
-  task :update, :oref, :nref do |t, args|
-    exec_in_svc_dir { |_| sh "sed -i \"s/#{args[:oref]}/#{args[:nref]}/g\" Gemfile && bundle install" }
+  task :update, :oref, :nref, :ng do |t, args|
+    args.with_defaults(:ng => "true")
+    exec_in_svc_dir(args.ng) { |_| sh "sed -i \"s/#{args[:oref]}/#{args[:nref]}/g\" Gemfile && bundle install" }
   end
 
   desc "Dry run update"
-  task :update_dry, :oref, :nref do |t, args|
-    exec_in_svc_dir { |_| sh "sed \"s/#{args[:oref]}/#{args[:nref]}/g\" Gemfile" }
+  task :update_dry, :oref, :nref, :ng do |t, args|
+    args.with_defaults(:ng => "true")
+    exec_in_svc_dir(args.ng) { |_| sh "sed \"s/#{args[:oref]}/#{args[:nref]}/g\" Gemfile" }
   end
 
   # usage: rake bundler:gerrit_vendor[gem_name,'<repo>','<refspec>']
   desc "Change the gem source from git reference to local vendor"
-  task :gerrit_vendor, :gem_name, :repo, :refspec do |t, args|
+  task :gerrit_vendor, :gem_name, :repo, :refspec, :ng do |t, args|
+    args.with_defaults(:ng => "true")
     gem_name = args[:gem_name]
     repo = args[:repo]
     refspec = args[:refspec]
@@ -71,7 +75,7 @@ namespace "bundler" do
       abort unless system "git fetch #{repo} #{refspec} && git checkout FETCH_HEAD && gem build #{gem_name}.gemspec && gem install #{gem_name}*.gem"
     end
 
-    exec_in_svc_dir do |dir|
+    exec_in_svc_dir (args.ng) do |dir|
       prune_git('Gemfile', gem_name)
       sh "rm -f vendor/cache/#{gem_name}*.gem && bundle install"
     end
