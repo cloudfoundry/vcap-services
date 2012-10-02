@@ -31,32 +31,6 @@ GIT
       yajl-ruby (~> 0.8.3)
 
 GIT
-  remote: git://github.com/cloudfoundry/vcap-services-base.git
-  revision: 98b180d6c7db85c6d8e5e52fc6ba727f1eef3d5b
-  ref: 98b180d6c7
-  specs:
-    vcap_services_base (0.1.16)
-      curb (~> 0.7.16)
-      datamapper (~> 1.1.0)
-      do_sqlite3 (~> 0.10.3)
-      em-http-request (~> 1.0.0.beta.3)
-      eventmachine (~> 0.12.11.cloudfoundry.3)
-      eventmachine_httpserver (~> 0.2.1)
-      json (~> 1.4.6)
-      nats (~> 0.4.22.beta.8)
-      resque (~> 1.20)
-      resque-status (~> 0.3.2)
-      ruby-hmac (~> 0.4.0)
-      rubyzip (~> 0.9.8)
-      sinatra (~> 1.2.3)
-      thin (~> 1.3.1)
-      uuidtools (~> 2.1.2)
-      vcap_common (>= 1.0.8)
-      vcap_logging (>= 1.0.2)
-      warden-client (~> 0.0.6)
-      warden-protocol (~> 0.0.5)
-
-GIT
   remote: git://github.com/cloudfoundry/warden.git
   revision: 21f9a32ab501a6485c9a4e7aff4f9b6f40e31e3c
   ref: 21f9a32ab50
@@ -197,6 +171,26 @@ GEM
     uuid (2.3.5)
       macaddr (~> 1.0)
     uuidtools (2.1.3)
+    vcap_services_base (0.1.16)
+      curb (~> 0.7.16)
+      datamapper (~> 1.1.0)
+      do_sqlite3 (~> 0.10.3)
+      em-http-request (~> 1.0.0.beta.3)
+      eventmachine (~> 0.12.11.cloudfoundry.3)
+      eventmachine_httpserver (~> 0.2.1)
+      json (~> 1.4.6)
+      nats (~> 0.4.22.beta.8)
+      resque (~> 1.20)
+      resque-status (~> 0.3.2)
+      ruby-hmac (~> 0.4.0)
+      rubyzip (~> 0.9.8)
+      sinatra (~> 1.2.3)
+      thin (~> 1.3.1)
+      uuidtools (~> 2.1.2)
+      vcap_common (>= 1.0.8)
+      vcap_logging (>= 1.0.2)
+      warden-client (~> 0.0.6)
+      warden-protocol (~> 0.0.5)
     vegas (0.1.11)
       rack (>= 1.0.0)
     yajl-ruby (0.8.3)
@@ -224,6 +218,6 @@ DEPENDENCIES
   uuidtools
   vcap_common!
   vcap_logging!
-  vcap_services_base!
+  vcap_services_base
   warden-client!
   warden-protocol!
