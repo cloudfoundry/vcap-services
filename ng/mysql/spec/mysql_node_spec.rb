@@ -69,7 +69,7 @@ describe "Mysql server node" do
   it "should report inconsistency between mysql and local db" do
     EM.run do
       name, user = @db["name"], @db["user"]
-      @node.pools[@node.get_port(@db_instance)].with_connection do |conn|
+      @node.pools[name].with_connection do |conn|
         conn.query("delete from db where db='#{name}' and user='#{user}'")
       end
       result = @node.check_db_consistency
@@ -181,7 +181,7 @@ describe "Mysql server node" do
         EM.stop
       end
     ensure
-      service.destroy
+      @node.use_warden ? service.delete : service.destroy
     end
   end
 
@@ -362,8 +362,8 @@ describe "Mysql server node" do
         EM.add_timer(opts[:max_long_query] * 5){
           err.should_not == nil
           err.message.should =~ /interrupted/
-            # counter should also be updated
-            node.varz_details[:long_queries_killed].should > old_counter
+          # counter should also be updated
+          node.varz_details[:long_queries_killed].should > old_counter
           EM.stop
         }
       end
@@ -609,7 +609,7 @@ describe "Mysql server node" do
 
   it "should retain instance data after node restart" do
     EM.run do
-      node = @node
+      node = new_node(@opts)
       EM.add_timer(1) do
         db = node.provision(@default_plan)
         @test_dbs[db] = []
@@ -617,7 +617,7 @@ describe "Mysql server node" do
         conn.query('create table test(id int)')
         # simulate we restart the node
         node.shutdown
-        @node = VCAP::Services::Mysql::Node.new(@opts)
+        node = new_node(@opts)
         EM.add_timer(1) do
           conn2 = connect_to_mysql(db)
           result = conn2.query('show tables')
@@ -715,7 +715,7 @@ describe "Mysql server node" do
           value.should == "ok"
         end
       end
-      @node.pools[@node.get_port(@db_instance)].with_connection do |connection|
+      @node.pools[instance].with_connection do |connection|
         connection.query("Drop database #{instance}")
         sleep 1
         varz = @node.varz_details()
