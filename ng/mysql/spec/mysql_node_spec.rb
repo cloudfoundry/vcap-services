@@ -13,6 +13,29 @@ module VCAP
     module Mysql
       class Node
         attr_reader :pools, :pool, :logger, :capacity, :provision_served, :binding_served, :use_warden
+
+        # helper methods
+
+        # check whether mysql has required innodb plugin installed.
+        def check_innodb_plugin(instance)
+          fetch_pool(instance).with_connection do |connection|
+            res = connection.query("show tables from information_schema like 'INNODB_TRX'")
+            return true if res.count > 0
+          end
+        rescue Mysql2::Error => e
+          @logger.error("MySQL connection failed: [#{e.errno}] #{e.error}")
+          nil
+        end
+
+        def is_percona_server?(instance)
+          fetch_pool(instance).with_connection do |connection|
+            res = connection.query("show variables where variable_name like 'version_comment'")
+            return res.count > 0 && res.to_a[0]["Value"] =~ /percona/i
+          end
+        rescue Mysql2::Error => e
+          @logger.error("MySQL connection failed: [#{e.errno}] #{e.error}")
+          nil
+        end
       end
     end
   end
@@ -69,7 +92,7 @@ describe "Mysql server node" do
   it "should report inconsistency between mysql and local db" do
     EM.run do
       name, user = @db["name"], @db["user"]
-      @node.pools[@node.get_port(@db_instance)].with_connection do |conn|
+      @node.fetch_pool(name).with_connection do |conn|
         conn.query("delete from db where db='#{name}' and user='#{user}'")
       end
       result = @node.check_db_consistency
@@ -181,7 +204,7 @@ describe "Mysql server node" do
         EM.stop
       end
     ensure
-      service.destroy
+      @node.use_warden ? service.delete : service.destroy
     end
   end
 
@@ -285,7 +308,7 @@ describe "Mysql server node" do
   end
 
   it "should kill long transaction" do
-    if @opts[:max_long_tx] > 0 and (@node.check_innodb_plugin)
+    if @opts[:max_long_tx] > 0 and (@node.check_innodb_plugin @db['name'])
       EM.run do
         opts = @opts.dup
         # reduce max_long_tx to accelerate test
@@ -330,7 +353,7 @@ describe "Mysql server node" do
   end
 
   it "should kill long queries" do
-    pending "Disable for non-Percona server since the test behavior varies on regular Mysql server." unless @node.is_percona_server?
+    pending "Disable for non-Percona server since the test behavior varies on regular Mysql server." unless @node.is_percona_server?(@db['name'])
     EM.run do
       db = @node.provision(@default_plan)
       @test_dbs[db] = []
@@ -362,8 +385,8 @@ describe "Mysql server node" do
         EM.add_timer(opts[:max_long_query] * 5){
           err.should_not == nil
           err.message.should =~ /interrupted/
-            # counter should also be updated
-            node.varz_details[:long_queries_killed].should > old_counter
+          # counter should also be updated
+          node.varz_details[:long_queries_killed].should > old_counter
           EM.stop
         }
       end
@@ -609,7 +632,7 @@ describe "Mysql server node" do
 
   it "should retain instance data after node restart" do
     EM.run do
-      node = @node
+      node = new_node(@opts)
       EM.add_timer(1) do
         db = node.provision(@default_plan)
         @test_dbs[db] = []
@@ -617,7 +640,7 @@ describe "Mysql server node" do
         conn.query('create table test(id int)')
         # simulate we restart the node
         node.shutdown
-        @node = VCAP::Services::Mysql::Node.new(@opts)
+        node = new_node(@opts)
         EM.add_timer(1) do
           conn2 = connect_to_mysql(db)
           result = conn2.query('show tables')
@@ -715,7 +738,7 @@ describe "Mysql server node" do
           value.should == "ok"
         end
       end
-      @node.pools[@node.get_port(@db_instance)].with_connection do |connection|
+      @node.fetch_pool(instance).with_connection do |connection|
         connection.query("Drop database #{instance}")
         sleep 1
         varz = @node.varz_details()
