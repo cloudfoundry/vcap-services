@@ -30,17 +30,17 @@ init-file = /var/vcap/jobs/mysql_node_ng/config/mysql_init
 <% if micro %>
 bind-address            = 127.0.0.1
 <% end %>
-key_buffer              = <%= production ? '3276M' : '16M' %>
-innodb_buffer_pool_size = <%= production ? '3276M' : '256M' %>
+key_buffer              = 800M
+innodb_buffer_pool_size = 800M
 max_allowed_packet      = 16M
 thread_stack            = 256K
-thread_cache_size       = <%= production ? 128 : 8 %>
-thread_concurrency      = <%= production ? 8 : 2 %>
-max_connections         = <%= production ? 512 : 16 %>
-table_cache             = <%= production ? 2048 : 256 %>
+thread_cache_size       = 8
+thread_concurrency      = 8
+max_connections         = 512
+table_cache             = 256
 myisam-recover          = BACKUP
 query_cache_limit       = 1M
-query_cache_size        = <%= production ? '128M' : '16M' %>
+query_cache_size        = 16M
 expire_logs_days        = 10
 max_binlog_size         = 100M
 
