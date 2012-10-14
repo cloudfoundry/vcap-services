@@ -128,10 +128,6 @@ module VCAP
             "5432"
           end
 
-          def service_script
-            "postgresql_ctl"
-          end
-
         end
 
         class Wardenbinduser

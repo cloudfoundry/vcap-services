@@ -443,7 +443,7 @@ EOF
   end
 
   def service_script
-    "rabbitmq_startup.sh #{self[:name]}"
+    "monit_ctl #{self[:name]}"
   end
 
   def migration_check

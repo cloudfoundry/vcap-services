@@ -501,7 +501,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
   end
 
   def service_script
-    "mongod_startup.sh #{version} #{mongod_exe_options}"
+    "monit_ctl #{version} #{mongod_exe_options}"
   end
 
   # diretory helper

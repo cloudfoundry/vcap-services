@@ -323,10 +323,6 @@ class VCAP::Services::VBlob::Node::ProvisionedService
     25001
   end
 
-  def service_script
-    "vblob_startup.sh"
-  end
-
   def data_dir
     File.join(base_dir,'vblob_data')
   end

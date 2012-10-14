@@ -893,10 +893,6 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
     3306
   end
 
-  def service_script
-    "mysql_startup.sh"
-  end
-
   #directory helper
   def data_dir
     File.join(base_dir, "data")

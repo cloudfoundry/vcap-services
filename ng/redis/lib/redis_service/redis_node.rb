@@ -368,10 +368,6 @@ class VCAP::Services::Redis::Node::ProvisionedService
     25001
   end
 
-  def service_script
-    "redis_startup.sh"
-  end
-
   def migration_check
     super
     # Need regenerate configuration file for redis server
