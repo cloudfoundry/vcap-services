@@ -21,10 +21,6 @@ class VCAP::Services::Mysql::NodeBin < VCAP::Services::Base::NodeBin
   end
 
   def additional_config(options, config)
-    options[:config_templates] = {
-      '5.1' => File.expand_path("../../resources/my.conf.erb", __FILE__),
-      '5.5' => File.expand_path("../../resources/my55.conf.erb", __FILE__),
-    }
     options[:gzip_bin] = parse_property(config, "gzip_bin", String)
     options[:max_db_size] = parse_property(config, "max_db_size", Integer)
     options[:max_long_query] = parse_property(config, "max_long_query", Integer)
@@ -44,9 +40,6 @@ class VCAP::Services::Mysql::NodeBin < VCAP::Services::Base::NodeBin
       options[:image_dir] = parse_property(warden_config, "image_dir", String)
       options[:filesystem_quota] = parse_property(warden_config, "filesystem_quota", Boolean, :optional => true)
       options[:service_start_timeout] = parse_property(warden_config, "service_start_timeout", Integer, :optional => true, :default => 3)
-      options[:max_heap_table_size] = parse_property(warden_config, "max_heap_table_size", Integer, :optional => true)
-      options[:micro] = parse_property(warden_config, "micro", Boolean, :optional => true)
-      options[:production] = parse_property(warden_config, "production", Boolean, :optional => true)
     end
     options
   end
