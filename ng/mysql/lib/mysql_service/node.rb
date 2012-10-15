@@ -850,11 +850,6 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
       @max_disk              = (options[:max_db_size] + options[:disk_overhead]).ceil
       @quota                 = options[:filesystem_quota] || false
       @logger                = options[:logger]
-      @@max_heap_table_size  = options[:max_heap_table_size]
-      @@micro                = options[:micro]
-      @@production           = options[:production]
-      @@config_template      = ERB.new(File.read(options[:config_template]))
-      @@new_iptables_lock    = Mutex.new
 
       FileUtils.mkdir_p(base_dir)
       FileUtils.mkdir_p(log_dir)
@@ -871,22 +866,8 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
       provisioned_service.plan     = 1
 
       provisioned_service.prepare_filesystem(@max_disk)
-      provisioned_service.generate_config
       provisioned_service
     end
-  end
-
-  def generate_config
-    mysql_data_dir      = "/store/instance/data"
-    log_file            = "/store/log/mysqld.err.log"
-    mysql_tmp_dir       = "/store/instance/mysql_tmp"
-    max_heap_table_size = @@max_heap_table_size
-    micro               = @@micro
-    production          = @@production
-    config              = @@config_template.result(binding)
-
-    config_path         = File.join(base_dir, "my.cnf")
-    File.open(config_path, "w") {|f| f.write(config)}
   end
 
   def service_port
@@ -900,35 +881,5 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
   #directory helper
   def data_dir
     File.join(base_dir, "data")
-  end
-
-  alias_method :iptable_ori, :iptable
-  def iptable(add, src_port, dest_ip, dest_port)
-    rule = [ "--protocol tcp",
-      "--dport #{src_port}",
-      "--jump DNAT",
-      "--to-destination #{dest_ip}:#{dest_port}" ]
-
-    if add
-      cmd1 = "iptables -t nat -A PREROUTING #{rule.join(" ")}"
-      cmd2 = "iptables -t nat -A OUTPUT #{rule.join(" ")}"
-    else
-      cmd1 = "iptables -t nat -D PREROUTING #{rule.join(" ")}"
-      cmd2 = "iptables -t nat -D OUTPUT #{rule.join(" ")}"
-    end
-
-    # iptables exit code:
-    # The exit code is 0 for correct functioning.
-    # Errors which appear to be caused by invalid or abused command line parameters cause an exit code of 2,
-    # and other errors cause an exit code of 1.
-    #
-    # We add a thread lock here, since iptables may return resource unavailable temporary in multi-threads
-    # iptables command issued.
-    @@new_iptables_lock.synchronize do
-      ret = self.class.sh(cmd1, :raise => false)
-      logger.warn("cmd \"#{cmd1}\" invalid") if ret == 2
-      ret = self.class.sh(cmd2, :raise => false)
-      logger.warn("cmd \"#{cmd2}\" invalid") if ret == 2
-    end
   end
 end
