@@ -66,6 +66,7 @@ def getNodeTestConfig
     :max_disk => parse_property(config, "max_disk", Integer),
     :migration_nfs => "/tmp/migration",
     :service_start_timeout => parse_property(config, "service_start_timeout", Integer, :optional => true),
+    :memory_limit => parse_property(config, "memory_limit", Integer),
   }
   options[:local_db] = "sqlite3:" + options[:local_db_file]
   options
