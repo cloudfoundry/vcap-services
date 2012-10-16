@@ -26,4 +26,5 @@ service_start_timeout: 30
 # max_nats_payload: 1048576
 # fqdn_hosts: false
 max_disk: 128
+memory_limit: 128
 image_dir: /var/vcap/services/rabbit/rabbitmq_image
