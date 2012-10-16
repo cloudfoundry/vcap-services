@@ -28,6 +28,7 @@ class VCAP::Services::Rabbit::NodeBin < VCAP::Services::Base::NodeBin
     options[:max_memory_factor] = parse_property(config, "max_memory_factor", Float, :optional => true)
     options[:image_dir] = parse_property(config, "image_dir", String)
     options[:max_disk] = parse_property(config, "max_disk", Integer)
+    options[:memory_limit] = parse_property(config, "memory_limit", Integer)
     options
   end
 
