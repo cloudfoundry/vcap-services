@@ -28,6 +28,10 @@ class VCAP::Services::Rabbit::NodeBin < VCAP::Services::Base::NodeBin
     options[:max_memory_factor] = parse_property(config, "max_memory_factor", Float, :optional => true)
     options[:image_dir] = parse_property(config, "image_dir", String)
     options[:max_disk] = parse_property(config, "max_disk", Integer)
+    proxy_config = parse_property(config, "bandwidth_proxy", Hash)
+    options[:proxy_bin] = parse_property(proxy_config, "bin", String)
+    options[:proxy_window] = parse_property(proxy_config, "window", Integer)
+    options[:proxy_limit] = parse_property(proxy_config, "size", Integer)
     options
   end
 
