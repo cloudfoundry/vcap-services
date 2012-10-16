@@ -27,3 +27,7 @@ service_start_timeout: 30
 # fqdn_hosts: false
 max_disk: 128
 image_dir: /var/vcap/services/rabbit/rabbitmq_image
+proxy_bin: /var/vcap/packages/bandwidth_proxy/bin/bandwidth_proxy
+# Set default window to 1 day
+limit_window: 86400
+limit_size: 65535
