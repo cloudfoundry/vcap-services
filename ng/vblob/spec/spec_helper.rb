@@ -98,7 +98,7 @@ def get_node_config()
     :max_disk => parse_property(config, "max_disk", Integer),
     :base_dir => '/tmp/vblob/instance',
     :log_dir => '/tmp/vblob/log',
-    :vblobd_log_dir => '/tmp/vblob/service-log',
+    :service_log_dir => '/tmp/vblob/service-log',
     :local_db => 'sqlite3:/tmp/vblob/vblob_node.db',
   }
   options[:logger].level = Logger::DEBUG

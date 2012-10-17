@@ -23,5 +23,5 @@ logging:
 command_rename_prefix: protect-command-prefix
 gzip_bin: gzip
 redis_server_path: redis-server
-redis_log_dir: /var/vcap/sys/log/redis
+service_log_dir: /var/vcap/sys/log/redis
 image_dir: /var/vcap/services/redis/redis_image
