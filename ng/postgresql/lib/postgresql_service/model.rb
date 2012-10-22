@@ -9,6 +9,7 @@ module VCAP
           # property plan is deprecated. The instances in one node have same plan.
           property :plan,       Integer, :required => true
           property :quota_exceeded,  Boolean, :default => false
+          property :version,    String,  :required => true
           has n, :bindusers
 
           def prepare
@@ -56,6 +57,7 @@ module VCAP
           property :ip,               String
           property :default_username, String
           property :default_password, String
+          property :version,          String,  :required => true
           has n, :wardenbindusers
 
           class << self
@@ -113,7 +115,12 @@ module VCAP
           end
 
           def service_port
-            5432
+            case version
+            when "9.1"
+              "5433"
+            else
+              "5432"
+            end
           end
 
           def start_options
@@ -131,6 +138,10 @@ module VCAP
               service_port,
               "postgres"
             )
+          end
+
+          def service_script
+            "postgresql_ctl #{version}"
           end
 
         end
