@@ -74,8 +74,12 @@ def connect_to_postgresql(options)
   PGconn.connect(host, port, nil, nil, db, user, password)
 end
 
+def config_base_dir
+  ENV["CLOUD_FOUNDRY_CONFIG_PATH"] || File.join(File.dirname(__FILE__), '..', 'config')
+end
+
 def getNodeTestConfig()
-  config_file = File.join(File.dirname(__FILE__), "../config/postgresql_node.yml")
+  config_file = File.join(config_base_dir, "postgresql_node.yml")
   config = YAML.load_file(config_file)
   options = {
     :logger => getLogger,
@@ -91,11 +95,11 @@ def getNodeTestConfig()
     :ip_route => parse_property(config, "ip_route", String, :optional => true),
     :max_long_tx => parse_property(config, "max_long_tx", Integer),
     :max_db_conns => parse_property(config, "max_db_conns", Integer),
-    :restore_bin => parse_property(config, "restore_bin", String),
-    :dump_bin => parse_property(config, "dump_bin", String),
     :db_size_overhead => parse_property(config, "db_size_overhead", Float),
     :disk_overhead => parse_property(config, "disk_overhead", Numeric, :disk_overhead => 0.0),
-    :use_warden => parse_property(config, "use_warden", Boolean, :optional => true, :default => false)
+    :use_warden => parse_property(config, "use_warden", Boolean, :optional => true, :default => false),
+    :supported_versions => parse_property(config, "supported_versions", Array),
+    :default_version => parse_property(config, "default_version", String),
   }
   if options[:use_warden]
     warden_config = parse_property(config, "warden", Hash, :optional => true)
@@ -111,8 +115,9 @@ def getNodeTestConfig()
   options
 end
 
+
 def getProvisionerTestConfig()
-  config_file = File.join(File.dirname(__FILE__), "../config/postgresql_gateway.yml")
+  config_file = File.join(config_base_dir, "postgresql_gateway.yml")
   config = YAML.load_file(config_file)
   config = VCAP.symbolize_keys(config)
   options = {
