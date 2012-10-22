@@ -146,7 +146,3 @@ def new_node(options)
   opts[:not_start_instances] = true if opts[:use_warden]
   VCAP::Services::Mysql::Node.new(opts)
 end
-
-
-def provision_instance
-end
