@@ -37,6 +37,15 @@ class VCAP::Services::Postgresql::NodeBin < VCAP::Services::Base::NodeBin
       options[:filesystem_quota] = parse_property(warden_config, "filesystem_quota", Boolean, :optional => true)
       options[:service_start_timeout] = parse_property(warden_config, "service_start_timeout", Integer, :optional => 3, :default => 3)
     end
+    if options[:use_warden] && options[:filesystem_quota] && options[:image_dir]
+      warden_config = parse_property(config, "warden", Hash, :optional => true)
+      options[:clean_image_cache] = parse_property(warden_config, "clean_image_cache", Boolean, :optional => true, :default => false)
+      options[:clean_image_cache_size_limit] = parse_property(warden_config, "clean_image_cache_size_limit", Fixnum, :optional => true, :default => 40960000000000)
+      options[:clean_image_cache_follow_symlink] = parse_property(warden_config, "clean_image_cache_follow_symlink", Boolean, :optional => true, :default => false)
+      options[:clean_image_cache_interval] = parse_property(warden_config, "clean_image_cache_interval", Integer, :optional => true, :default => 3)
+    else
+      options[:clean_image_cache] = false
+    end
     options
   end
 
