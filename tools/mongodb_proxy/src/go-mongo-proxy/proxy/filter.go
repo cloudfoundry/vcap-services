@@ -13,6 +13,7 @@ import (
 	"syscall"
 )
 
+const OP_UNKNOWN = 0
 const OP_REPLY = 1
 const OP_MSG = 1000
 const OP_UPDATE = 2001
@@ -42,9 +43,9 @@ type FilterAction struct {
 
 type DiskUsage struct {
 	reserved_blocks float64
-	total_size      uint64  // bytes, total space size
-	static_size     uint64  // bytes, static allocated disk file size
-	dynamic_size    uint64  // bytes, dynamic allocated disk file size
+	total_size      float64 // bytes, total space size
+	static_size     float64 // bytes, static allocated disk file size
+	dynamic_size    float64 // bytes, dynamic allocated disk file size
 	ratio           float64 // percent, dynamic value
 }
 
@@ -99,7 +100,7 @@ func (f *IOFilterProtocol) PassFilter(op_code int32) (pass bool) {
 func (f *IOFilterProtocol) HandleMsgHeader(stream []byte) (message_length,
 	op_code int32) {
 	if len(stream) < STANDARD_HEADER_SIZE {
-		return 0, 0
+		return 0, OP_UNKNOWN
 	}
 
 	buf := bytes.NewBuffer(stream[0:4])
@@ -108,26 +109,22 @@ func (f *IOFilterProtocol) HandleMsgHeader(stream []byte) (message_length,
 	err := binary.Read(buf, binary.LittleEndian, &message_length)
 	if err != nil {
 		logger.Error("Failed to do binary read message_length [%s].", err)
-		return 0, 0
+		return 0, OP_UNKNOWN
 	}
 
 	buf = bytes.NewBuffer(stream[12:16])
 	err = binary.Read(buf, binary.LittleEndian, &op_code)
 	if err != nil {
 		logger.Error("Failed to do binary read op_code [%s].", err)
-		return 0, 0
+		return 0, OP_UNKNOWN
 	}
 
-	if len(stream) >= int(message_length) {
-		if op_code == OP_UPDATE ||
-			op_code == OP_INSERT ||
-			op_code == OP_DELETE {
-			f.action.dirty <- true
-		}
-		return message_length, op_code
+	if op_code == OP_UPDATE ||
+		op_code == OP_INSERT ||
+		op_code == OP_DELETE {
+		f.action.dirty <- true
 	}
-
-	return 0, 0
+	return message_length, op_code
 }
 
 func (f *IOFilterProtocol) MonitDiskUsage() {
@@ -135,14 +132,14 @@ func (f *IOFilterProtocol) MonitDiskUsage() {
 	disk_usage := &f.disk_usage
 	action := &f.action
 
-	var journal_files_size, current_disk_usage uint64
+	var journal_files_size, current_disk_usage float64
 
 	base_dir := "/store/instance"
 	journal_dir := filepath.Join(base_dir, "data", "journal")
 
 	visit_file := func(path string, f os.FileInfo, err error) error {
 		if err == nil && !f.IsDir() {
-			journal_files_size += uint64(f.Size())
+			journal_files_size += float64(f.Size())
 		}
 		return nil
 	}
@@ -168,20 +165,20 @@ func (f *IOFilterProtocol) MonitDiskUsage() {
 		}
 
 	HandleDiskUsage:
-        logger.Debug("Recalculate disk usage after getting message from dirty channel.\n")
+		logger.Debug("Recalculate disk usage after getting message from dirty channel.\n")
 
-        session, err := mgo.Dial(conn_info.HOST + ":" + conn_info.PORT)
-	    if err != nil {
-	    	logger.Error("Failed to connect to %s:%s [%s].", conn_info.HOST,
-	    		conn_info.PORT, err)
-            session = nil
-	    	goto Error
-	    }
+		session, err := mgo.Dial(conn_info.HOST + ":" + conn_info.PORT)
+		if err != nil {
+			logger.Error("Failed to connect to %s:%s [%s].", conn_info.HOST,
+				conn_info.PORT, err)
+			session = nil
+			goto Error
+		}
 
-		disk_usage.static_size = 0
-		disk_usage.dynamic_size = 0
-		journal_files_size = 0
-		current_disk_usage = 0
+		disk_usage.static_size = 0.0
+		disk_usage.dynamic_size = 0.0
+		journal_files_size = 0.0
+		current_disk_usage = 0.0
 
 		if !read_mongodb_static_size(f, session) {
 			goto Error
@@ -192,28 +189,27 @@ func (f *IOFilterProtocol) MonitDiskUsage() {
 		}
 
 		filepath.Walk(journal_dir, visit_file)
-		logger.Debug("Get journal files size %d.", journal_files_size)
+		logger.Debug("Get journal files size %v.", journal_files_size)
 
 		/*
 		 * Check condition: (static_size + dynamic_size) >= threshold * total_size
 		 */
 		current_disk_usage = disk_usage.static_size + disk_usage.dynamic_size + journal_files_size
-		logger.Debug("Get current disk occupied size %d.", current_disk_usage)
-		disk_usage.ratio = float64(current_disk_usage) /
-			float64(disk_usage.total_size)
+		logger.Debug("Get current disk occupied size %v.", current_disk_usage)
+		disk_usage.ratio = current_disk_usage / disk_usage.total_size
 		if disk_usage.ratio >= action.threshold {
 			atomic.StoreUint32(&action.blocked, BLOCKED)
 		} else {
 			atomic.StoreUint32(&action.blocked, UNBLOCKED)
 		}
 
-        session.Close()
+		session.Close()
 		continue
 
 	Error:
-        if session != nil {
-            session.Close()
-        }
+		if session != nil {
+			session.Close()
+		}
 		atomic.StoreUint32(&action.blocked, BLOCKED)
 	}
 }
@@ -224,15 +220,21 @@ func (f *IOFilterProtocol) MonitDiskUsage() {
 /*                                        */
 /******************************************/
 func read_mongodb_static_size(f *IOFilterProtocol, session *mgo.Session) bool {
+	conn_info := &f.conn_info
 	disk_usage := &f.disk_usage
 
 	var stats bson.M
-	var temp int
+	var temp float64
 
 	admindb := session.DB("admin")
-    // NOTE: admindb.Login is not necessary if we connect to mongodb
-    // through 'localhost'
-    err := admindb.Run(bson.D{{"dbStats", 1}, {"scale", 1}}, &stats)
+	err := admindb.Login(conn_info.USER, conn_info.PASS)
+	if err != nil {
+		logger.Error("Failed to login database admin as %s:%s: [%s].",
+			conn_info.USER, conn_info.PASS, err)
+		return false
+	}
+
+	err = admindb.Run(bson.D{{"dbStats", 1}, {"scale", 1}}, &stats)
 	if err != nil {
 		logger.Error("Failed to get database %s stats [%s].", "admin", err)
 		return false
@@ -242,17 +244,17 @@ func read_mongodb_static_size(f *IOFilterProtocol, session *mgo.Session) bool {
 		logger.Error("Failed to read admin_namespace_size.")
 		return false
 	}
-	admin_namespace_size := uint64(temp * 1024 * 1024)
+	admin_namespace_size := temp * 1024.0 * 1024.0
 	disk_usage.static_size += admin_namespace_size
 
 	if !parse_dbstats(stats["fileSize"], &temp) {
 		logger.Error("Failed to read admin_data_file_size.")
 		return false
 	}
-	admin_data_file_size := uint64(temp)
+	admin_data_file_size := temp
 	disk_usage.static_size += admin_data_file_size
 
-	logger.Debug("Get static disk files size %d.", disk_usage.static_size)
+	logger.Debug("Get static disk files size %v.", disk_usage.static_size)
 	return true
 }
 
@@ -261,12 +263,17 @@ func read_mongodb_dynamic_size(f *IOFilterProtocol, session *mgo.Session) bool {
 	disk_usage := &f.disk_usage
 
 	var stats bson.M
-	var temp int
+	var temp float64
 
 	db := session.DB(conn_info.DBNAME)
-    // NOTE: db.Login is not necessary if we connect to mongodb
-    // through 'localhost'
-    err := db.Run(bson.D{{"dbStats", 1}, {"scale", 1}}, &stats)
+	err := db.Login(conn_info.USER, conn_info.PASS)
+	if err != nil {
+		logger.Error("Failed to login database db as %s:%s: [%s].",
+			conn_info.USER, conn_info.PASS, err)
+		return false
+	}
+
+	err = db.Run(bson.D{{"dbStats", 1}, {"scale", 1}}, &stats)
 	if err != nil {
 		logger.Error("Failed to get database %s stats [%s].",
 			conn_info.DBNAME, err)
@@ -277,39 +284,39 @@ func read_mongodb_dynamic_size(f *IOFilterProtocol, session *mgo.Session) bool {
 		logger.Error("Failed to read db_namespace_size.")
 		return false
 	}
-	db_namespace_size := uint64(temp * 1024 * 1024)
+	db_namespace_size := temp * 1024.0 * 1024.0
 	disk_usage.dynamic_size += db_namespace_size
 
 	if !parse_dbstats(stats["dataSize"], &temp) {
 		logger.Error("Failed to read db_data_size.")
 		return false
 	}
-	db_data_size := uint64(temp)
+	db_data_size := temp
 	disk_usage.dynamic_size += db_data_size
 
 	if !parse_dbstats(stats["indexSize"], &temp) {
 		logger.Error("Failed to read db_index_size.")
 		return false
 	}
-	db_index_size := uint64(temp)
+	db_index_size := temp
 	disk_usage.dynamic_size += db_index_size
 
-	logger.Debug("Get dynamic disk files size %d.", disk_usage.dynamic_size)
+	logger.Debug("Get dynamic disk files size %v.", disk_usage.dynamic_size)
 	return true
 }
 
 /******************************************/
 /*                                        */
-/*       Internel Support Routines        */
+/*       Internal Support Routines        */
 /*                                        */
 /******************************************/
 func init_disk_usage(disk_usage *DiskUsage) bool {
 	if disk_usage.reserved_blocks == 0 {
 		disk_usage.reserved_blocks = DEFAULT_FS_RESERVED_BLOCKS
 	}
-	disk_usage.total_size = 0
-	disk_usage.static_size = 0
-	disk_usage.dynamic_size = 0
+	disk_usage.total_size = 0.0
+	disk_usage.static_size = 0.0
+	disk_usage.dynamic_size = 0.0
 	disk_usage.ratio = 0.0
 
 	base_dir := "/store/instance"
@@ -327,15 +334,19 @@ func init_disk_usage(disk_usage *DiskUsage) bool {
 		return false
 	}
 
-	total_size := uint64(statfs.Bsize) * uint64(float64(statfs.Blocks)*
-		float64(1.0-disk_usage.reserved_blocks))
-	logger.Debug("Get total disk size %d.", total_size)
+	total_size := float64(statfs.Bsize) * float64(uint64(float64(statfs.Blocks)*
+		float64(1.0-disk_usage.reserved_blocks)))
+	logger.Debug("Get total disk size %v.", total_size)
 	disk_usage.total_size = total_size
 	return true
 }
 
-func parse_dbstats(value interface{}, result *int) bool {
-	temp, err := strconv.Atoi(fmt.Sprintf("%d", value))
+/*
+ * NOTE: if disk data file gets very large, then the returned data size would be
+ *       'float' value but not 'integer' value, such as 2.098026476e+09.
+ */
+func parse_dbstats(value interface{}, result *float64) bool {
+	temp, err := strconv.ParseFloat(fmt.Sprintf("%v", value), 64)
 	if err != nil {
 		logger.Error("Failed to convert data type: [%v].", err)
 		return false

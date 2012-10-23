@@ -14,6 +14,8 @@ type ConnectionInfo struct {
 	HOST   string
 	PORT   string
 	DBNAME string
+	USER   string
+	PASS   string
 }
 
 type ProxyConfig struct {
@@ -205,7 +207,7 @@ Error:
 
 /******************************************/
 /*                                        */
-/*       Internel Support Routines        */
+/*       Internal Support Routines        */
 /*                                        */
 /******************************************/
 func parse_config(proxy *ProxyServer, conf *ProxyConfig) (retval bool) {
