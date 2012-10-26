@@ -207,7 +207,7 @@ Error:
 
 /******************************************/
 /*                                        */
-/*       Internel Support Routines        */
+/*       Internal Support Routines        */
 /*                                        */
 /******************************************/
 func parse_config(proxy *ProxyServer, conf *ProxyConfig) (retval bool) {
