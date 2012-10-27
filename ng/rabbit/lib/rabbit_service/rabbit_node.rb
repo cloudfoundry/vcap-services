@@ -55,8 +55,8 @@ class VCAP::Services::Rabbit::Node
     @service_start_timeout = @options[:service_start_timeout] || 5
     @instance_parallel_start_count = 3
     @default_permissions = '{"configure":".*","write":".*","read":".*"}'
-    @initial_username = "guest"
-    @initial_password = "guest"
+    options[:initial_username] = @initial_username = "guest"
+    options[:initial_password] = @initial_password = "guest"
     @hostname = get_host
     ProvisionedService.init(options)
     @options = options
@@ -95,24 +95,17 @@ class VCAP::Services::Rabbit::Node
       port = new_port
       instance = ProvisionedService.create(port, get_admin_port(port), plan)
     end
-    instance.run
-    # Wait enough time for the RabbitMQ server starting, need use initial username and password to check
-    admin_username = instance.admin_username
-    admin_password = instance.admin_password
-    instance.admin_username = @initial_username
-    instance.admin_password = @initial_username
-    raise RabbitmqError.new(RabbitmqError::RABBITMQ_START_INSTANCE_TIMEOUT, instance.name) if wait_service_start(instance) == false
-    instance.admin_username = admin_username
-    instance.admin_password = admin_password
-    # Use initial credentials to create provision user
-    credentials = {"username" => @initial_username, "password" => @initial_password, "hostname" => instance.ip}
-    add_vhost(credentials, instance.vhost)
-    add_user(credentials, instance.admin_username, instance.admin_password)
-    set_permissions(credentials, instance.vhost, instance.admin_username, @default_permissions)
-    # Use provision user credentials to delete initial user for security
-    credentials["username"] = instance.admin_username
-    credentials["password"] = instance.admin_password
-    delete_user(credentials, @initial_username)
+    instance.run do
+      # Use initial credentials to create provision user
+      credentials = {"username" => @initial_username, "password" => @initial_password, "hostname" => instance.ip}
+      add_vhost(credentials, instance.vhost)
+      add_user(credentials, instance.admin_username, instance.admin_password)
+      set_permissions(credentials, instance.vhost, instance.admin_username, @default_permissions)
+      # Use provision user credentials to delete initial user for security
+      credentials["username"] = instance.admin_username
+      credentials["password"] = instance.admin_password
+      delete_user(credentials, @initial_username)
+    end
     @logger.info("Successfully fulfilled provision request: #{instance.name}")
     gen_credentials(instance)
   rescue => e
@@ -324,24 +317,13 @@ class VCAP::Services::Rabbit::Node
     instance
   end
 
-  def is_service_started(instance)
-    credentials = {"username" => instance.admin_username, "password" => instance.admin_password, "hostname" => instance.ip}
-    begin
-      # Try to call management API, if success, then return
-      response = create_resource(credentials)["users"].get
-      JSON.parse(response)
-      return true
-    rescue => e
-      return false
-    end
-  end
-
 end
 
 class VCAP::Services::Rabbit::Node::ProvisionedService
 
   include DataMapper::Resource
   include VCAP::Services::Rabbit
+  include VCAP::Services::Rabbit::Util
 
   property :name,            String,      :key => true
   property :vhost,           String,      :required => true
@@ -391,8 +373,6 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
       instance.plan_option = "rw"
       instance.pid = 0
       instance.proxy_pid = 0
-
-      raise "Cannot save provision service" unless instance.save!
 
       # Generate configuration
       port = @@options[:instance_port]
@@ -466,20 +446,50 @@ EOF
     @@options[:instance_port]
   end
 
-  def service_script
+  def service_admin_port
+    @@options[:instance_admin_port]
+  end
+
+  def start_script
     "rabbitmq_startup.sh #{self[:name]}"
+  end
+
+  def finish_start?
+    credentials = {"username" => admin_username, "password" => admin_password, "hostname" => ip}
+    begin
+      # Try to call management API, if success, then return
+      response = create_resource(credentials)["users"].get
+      JSON.parse(response)
+      return true
+    rescue => e
+      return false
+    end
+  end
+
+  def finish_first_start?
+    credentials = {"username" => @@options[:initial_username], "password" => @@options[:initial_password], "hostname" => ip}
+    begin
+      # Try to call management API, if success, then return
+      response = create_resource(credentials)["users"].get
+      JSON.parse(response)
+      return true
+    rescue => e
+      return false
+    end
+  end
+
+  def need_map_port?
+    false
   end
 
   def run
     super
     start_proxy
-    unmap_port(self[:port], self[:ip], service_port)
     save!
     true
   end
 
   def stop
-    map_port(self[:port], self[:ip], service_port)
     stop_proxy
     super
   end

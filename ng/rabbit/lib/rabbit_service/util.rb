@@ -9,7 +9,10 @@ module VCAP
         @rabbitmq_timeout = 2 if @rabbitmq_timeout == nil
 
         def create_resource(credentials)
-          RestClient::Resource.new("http://#{credentials["username"]}:#{credentials["password"]}@#{credentials["hostname"]}:#{@rabbitmq_admin_port}/api", :timeout => @rabbitmq_timeout)
+          p 5555555555555555555555555
+          p rabbitmq_admin_port = @rabbitmq_admin_port || service_admin_port
+          p 5555555555555555555555555
+          RestClient::Resource.new("http://#{credentials["username"]}:#{credentials["password"]}@#{credentials["hostname"]}:#{rabbitmq_admin_port}/api", :timeout => @rabbitmq_timeout)
         end
 
         def add_vhost(credentials, vhost)

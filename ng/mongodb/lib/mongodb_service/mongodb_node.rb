@@ -117,13 +117,12 @@ class VCAP::Services::MongoDB::Node
     credential['port'] = new_port(credential['port'])
     credential['version'] = version
     p_service = ProvisionedService.create(credential)
-    p_service.run
-
     username = credential['username'] ? credential['username'] : UUIDTools::UUID.random_create.to_s
     password = credential['password'] ? credential['username'] : UUIDTools::UUID.random_create.to_s
-    p_service.add_admin(p_service.admin, p_service.adminpass)
-    p_service.add_user(p_service.admin, p_service.adminpass)
-    p_service.add_user(username, password)
+    p_service.run do
+      p_service.add_user(p_service.admin, p_service.adminpass)
+      p_service.add_user(username, password)
+    end
 
     host = get_host
     response = {
@@ -372,8 +371,6 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
       p_service.db        = args['db'] ? args['db'] : 'db'
       p_service.version   = args['version']
 
-      raise "Cannot save provision service" unless p_service.save!
-
       p_service.prepare_filesystem(self.max_disk)
       FileUtils.mkdir_p(p_service.data_dir)
       p_service
@@ -483,25 +480,37 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     27017
   end
 
-  def service_script
+  def start_script
     "mongod_startup.sh #{version} #{mongod_exe_options}"
+  end
+
+  def finish_start?
+    Timeout::timeout(MONGO_TIMEOUT) do
+      conn = Mongo::Connection.new(ip, service_port)
+      auth = conn.db("admin").authenticate(admin, adminpass)
+      return false unless auth
+    end
+    true
+  rescue => e
+    false
+  end
+
+  def finish_first_start?
+    Timeout::timeout(MONGO_TIMEOUT) do
+      conn = Mongo::Connection.new(ip, service_port)
+    end
+    true
+  rescue => e
+    false
+  end
+
+  def post_start_script
+    "#{mongo} localhost:27017/admin --eval 'db.addUser(\"#{self[:admin]}\", \"#{self[:adminpass]}\")'"
   end
 
   # diretory helper
   def data_dir
     File.join(base_dir, "data")
-  end
-
-  # user management helper
-  def add_admin(username, password)
-    warden = self.class.warden_connect
-    req = Warden::Protocol::RunRequest.new
-    req.handle = self[:container]
-    req.script = "#{mongo} localhost:27017/admin --eval 'db.addUser(\"#{username}\", \"#{password}\")'"
-    rsp = warden.call(req)
-    warden.disconnect
-  rescue => e
-    raise "Could not add admin user \'#{username}\'"
   end
 
   def add_user(username, password)

@@ -102,7 +102,6 @@ class VCAP::Services::Redis::Node
       instance = ProvisionedService.create(port, version, plan, nil, nil)
     end
     instance.run
-    raise RedisError.new(RedisError::REDIS_START_INSTANCE_TIMEOUT, instance.name) if wait_service_start(instance) == false
     @logger.info("Successfully fulfilled provision request: #{instance.name}.")
     gen_credentials(instance)
   rescue => e
@@ -349,7 +348,6 @@ class VCAP::Services::Redis::Node::ProvisionedService
 
     def init(options)
       super(options)
-      @memory_limit = (options[:max_memory] || 128) + (options[:memory_overhead] || 0)
     end
 
     def create(port, version, plan=nil, name=nil, password=nil, db_file=nil, is_upgraded=false)
@@ -365,8 +363,6 @@ class VCAP::Services::Redis::Node::ProvisionedService
       instance.memory    = @@options[:max_memory]
       instance.plan      = 1
       instance.pid       = 0
-
-      raise "Cannot save provision service" unless instance.save!
 
       # Generate configuration
       port = @@options[:instance_port]
@@ -401,8 +397,21 @@ class VCAP::Services::Redis::Node::ProvisionedService
     25001
   end
 
-  def service_script
+  def start_script
     "redis_startup.sh #{version}"
+  end
+
+  def finish_start?
+    redis = Redis.new({:host => self[:ip], :port => service_port, :password => self[:password]})
+    redis.echo("")
+    true
+  rescue => e
+    false
+  ensure
+    begin
+      redis.quit if redis
+    rescue => e
+    end
   end
 
   def migration_check
