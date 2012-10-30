@@ -248,21 +248,45 @@ module VCAP::Services::Postgresql::WithoutWarden
   end
 
   def get_db_stat
-    get_db_stat_by_connection(@connection, @max_db_size)
+    get_db_stat_by_connection(@connection, @max_db_size, @sys_dbs)
   end
 
   def get_db_list
     get_db_list_by_connection(@connection)
   end
 
+  def db_overhead
+    avg_overhead = 0
+    res = global_connection.query("select ((sum(pg_database_size(datname)) + avg(pg_tablespace_size('pg_global')))/#{@capacity}) as avg_overhead from pg_database where datname in ('#{@sys_dbs.join('\', \'')}');")
+    res.each do |x|
+      avg_overhead = x['avg_overhead'].to_f.ceil
+    end
+    avg_overhead
+  end
+
+  def db_size(db)
+    sum = 0
+    if db.is_a?pgProvisionedService
+      name = db.name
+    else
+      name = db
+    end
+    avg_overhead = db_overhead
+    sz = global_connection.query("select pg_database_size('#{name}') size")
+    sz.each do |x|
+      sum += x['size'].to_i + avg_overhead
+    end
+    sum
+  end
+
   def dbs_size(dbs=[])
     dbs = [] if dbs.nil?
-
     result = {}
-    res = global_connection.query('select datname, sum(pg_database_size(datname)) as sum_size from pg_database group by datname')
+    avg_overhead = db_overhead
+    res = global_connection.query("select datname, sum(pg_database_size(datname)) as sum_size from pg_database where datname not in ('#{@sys_dbs.join('\', \'')}') group by datname")
     res.each do |x|
       name, size = x["datname"], x["sum_size"]
-      result[name] = size.to_i
+      result[name] = size.to_i + avg_overhead
     end
 
     if dbs.length > 0
