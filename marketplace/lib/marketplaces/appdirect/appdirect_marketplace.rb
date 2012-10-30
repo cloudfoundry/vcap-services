@@ -61,19 +61,18 @@ module VCAP
             req[:supported_versions] = [ bsvc["version"] ]
             req[:version_aliases]    =  { "current" => bsvc["version"] }
 
-            req[:acls] = {}
-            req[:acls][:wildcards] = @acls[:wildcards]
-
-            users = []
-            users.concat(@acls[:users].dup) if @acls[:users]
-            if bsvc["developers"] and bsvc["developers"].count > 0
-              bsvc["developers"].each do |dev|
-                users << dev["email"]
-              end
-            end
-            req[:acls][:users] = users unless users.empty?
-
             req[:url] = @external_uri
+
+            wildcards = @acls[:wildcards] if @acls
+
+            users_from_config = @acls[:users] if @acls
+            ad_devs = bsvc["developers"] if bsvc["developers"] and bsvc["developers"].count > 0
+            ad_dev_emails = ad_devs.map { |u| u["email"] } if ad_devs
+            users = (users_from_config || []) + (ad_dev_emails || []) if users_from_config || ad_dev_emails
+
+            req[:acls] = {} if users || wildcards
+            req[:acls][:users] = users if users
+            req[:acls][:wildcards] = wildcards if wildcards
 
             if bsvc["plans"] and bsvc["plans"].count > 0
               req[:plans] = []
