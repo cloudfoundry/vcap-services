@@ -97,6 +97,7 @@ def getNodeTestConfig()
     :base_dir => parse_property(config, "base_dir", String),
     :plan => parse_property(config, "plan", String),
     :capacity => parse_property(config, "capacity", Integer),
+    :max_disk => parse_property(config, "max_disk", Numeric, :optional => true, :default => 128),
     :max_db_size => parse_property(config, "max_db_size", Integer),
     :max_long_query => parse_property(config, "max_long_query", Integer),
     :node_id => parse_property(config, "node_id", String),
@@ -108,8 +109,6 @@ def getNodeTestConfig()
     :max_db_conns => parse_property(config, "max_db_conns", Integer),
     :restore_bin => parse_property(config, "restore_bin", String),
     :dump_bin => parse_property(config, "dump_bin", String),
-    :db_size_overhead => parse_property(config, "db_size_overhead", Float),
-    :disk_overhead => parse_property(config, "disk_overhead", Numeric, :disk_overhead => 0.0),
     :use_warden => parse_property(config, "use_warden", Boolean, :optional => true, :default => false)
   }
   if options[:use_warden]

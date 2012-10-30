@@ -5,22 +5,6 @@ module VCAP; module Services; module Postgresql; end; end; end
 
 class VCAP::Services::Postgresql::Node
 
-  def db_size(db)
-    sum = 0
-    if db.is_a?pgProvisionedService
-      name = db.name
-    else
-      name = db
-    end
-    conn = global_connection(db)
-    return nil unless conn
-    sz = conn.query("select pg_database_size('#{name}') size")
-    sz.each do |x|
-      sum += x['size'].to_i
-    end
-    sum
-  end
-
   def fmt_db_listing(name, size)
     "<name: '#{name}' size: #{size}>"
   end

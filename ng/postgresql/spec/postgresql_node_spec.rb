@@ -293,12 +293,13 @@ describe "Postgresql node normal cases" do
   it "should calculate both table and index as database size" do
     EM.run do
       conn = connect_to_postgresql(@db)
+      ori_size = @node.db_size(@db["name"])
       # should calculate table size
       conn.query("CREATE TABLE test(id INT)")
       conn.query("INSERT INTO test VALUES(10)")
       conn.query("INSERT INTO test VALUES(20)")
       table_size = @node.db_size(@db["name"])
-      table_size.should > 0
+      table_size.should > ori_size
       # should also calculate index size
       conn.query("CREATE INDEX id_index on test(id)")
       all_size = @node.db_size(@db["name"])
@@ -420,7 +421,10 @@ describe "Postgresql node normal cases" do
         }
 
         # use a default user (parent role), won't be killed
-        default_user = VCAP::Services::Postgresql::Node.pgProvisionedServiceClass(opts[:use_warden]).get(db['name']).pgbindusers.all(:default_user => true)[0]
+        default_user = VCAP::Services::Postgresql::Node.pgProvisionedServiceClass(opts[:use_warden])
+                        .get(db['name'])
+                        .pgbindusers
+                        .all(:default_user => true)[0]
         user = db.dup
         user['user'] = default_user[:user]
         user['password'] = default_user[:password]
@@ -665,13 +669,14 @@ describe "Postgresql node normal cases" do
     node = nil
     EM.run do
       opts = @opts.dup
-      # new pg db takes about 5M(~5554180)
-      # reduce storage quota to 6MB.
-      opts[:max_db_size] = 6 - @opts[:db_size_overhead]
+      # reduce storage quota
       if @opts[:use_warden]
-         opts[:port_range] = Range.new(@opts[:port_range].last+1, @opts[:port_range].last+50) if @opts[:use_warden]
-         opts[:local_db] = @opts[:local_db]+"_new.db"
-         opts[:not_start_instances] = true
+        opts[:port_range] = Range.new(@opts[:port_range].last+1, @opts[:port_range].last+50) if @opts[:use_warden]
+        opts[:local_db] = @opts[:local_db]+"_new.db"
+        opts[:not_start_instances] = true
+        opts[:max_db_size] = 23
+      else
+        opts[:max_db_size] = 6
       end
       node = VCAP::Services::Postgresql::Node.new(opts)
       EM.add_timer(1.1) do
@@ -1089,13 +1094,14 @@ describe "Postgresql node normal cases" do
     node = nil
     EM.run do
       opts = @opts.dup
-      # new pg db takes about 5M(~5554180)
-      # reduce storage quota to 6MB.
-      opts[:max_db_size] = 6 - opts[:db_size_overhead]
+      # reduce storage quota.
       if opts[:use_warden]
          opts[:port_range] = Range.new(@opts[:port_range].last+1, @opts[:port_range].last+50) if @opts[:use_warden]
          opts[:local_db] = @opts[:local_db]+"_new.db"
          opts[:not_start_instances] = true
+         opts[:max_db_size] = 23
+      else
+         opts[:max_db_size] = 6
       end
 
       node = VCAP::Services::Postgresql::Node.new(opts)
