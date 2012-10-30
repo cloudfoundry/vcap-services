@@ -31,7 +31,6 @@ module VCAP
               "description" => "My test Service",
               "plans" => [ { "id" => "free", "name" => "free edition", "description" => "for demo purposes only" } ],
               "development" => true,
-              "developers" => [ { "email" => "foo@xyz.com" } ],
               "active" => true,
               "provider" => "TestProvider"
             }
@@ -52,7 +51,6 @@ module VCAP
                   "description" => "Foo Service",
                   "plans" => [ { "id" => "free", "name" => "free edition", "description" => "for demo purposes only" } ],
                   "development" => true,
-                  "developers" => [ { "email" => "foo@xyz.com" } ],
                   "active" => true,
                   "provider" => "FooProvider"
                 }
@@ -91,17 +89,7 @@ module VCAP
             req[:supported_versions] = [ bsvc["version"] ]
             req[:version_aliases]    =  { "current" => bsvc["version"] }
 
-            req[:acls] = {}
-            req[:acls][:wildcards] = @acls[:wildcards]
-
-            users = []
-            users.concat(@acls[:users].dup) if @acls[:users]
-            if bsvc["developers"] and bsvc["developers"].count > 0
-              bsvc["developers"].each do |dev|
-                users << dev["email"]
-              end
-            end
-            req[:acls][:users] = users unless users.empty?
+            req[:acls] = @acls
 
             req[:url] = @external_uri
 

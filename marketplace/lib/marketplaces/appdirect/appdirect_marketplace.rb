@@ -62,16 +62,20 @@ module VCAP
             req[:version_aliases]    =  { "current" => bsvc["version"] }
 
             req[:acls] = {}
-            req[:acls][:wildcards] = @acls[:wildcards]
+            req[:acls][:wildcards] = @acls[:wildcards] if @acls && @acls[:wildcards]
 
             users = []
-            users.concat(@acls[:users].dup) if @acls[:users]
+            users.concat(@acls[:users].dup) if @acls && @acls[:users]
             if bsvc["developers"] and bsvc["developers"].count > 0
               bsvc["developers"].each do |dev|
                 users << dev["email"]
               end
             end
             req[:acls][:users] = users unless users.empty?
+
+            if !(req[:acls][:wildcards] || req[:acls][:users])
+              req[:acls] = nil
+            end
 
             req[:url] = @external_uri
 
