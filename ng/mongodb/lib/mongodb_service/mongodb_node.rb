@@ -119,6 +119,8 @@ class VCAP::Services::MongoDB::Node
     p_service = ProvisionedService.create(credential)
     p_service.run
 
+    raise ServiceError.new(MongoDBError::MONGODB_START_INSTANCE_TIMEOUT, p_service.name) unless wait_service_start(p_service)
+
     username = credential['username'] ? credential['username'] : UUIDTools::UUID.random_create.to_s
     password = credential['password'] ? credential['username'] : UUIDTools::UUID.random_create.to_s
     p_service.add_admin(p_service.admin, p_service.adminpass)
@@ -282,6 +284,10 @@ class VCAP::Services::MongoDB::Node
     @logger.warn(e)
     p_service.delete if p_service
     nil
+  end
+
+  def is_service_started(instance)
+    return instance.server_status == "ok"
   end
 
   def varz_details
@@ -535,6 +541,17 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
   def disconnect(conn)
     conn.close if conn
   end
+
+  def server_status
+    return "fail" unless running?
+    Timeout::timeout(MONGO_TIMEOUT) do
+      Mongo::Connection.new(self[:ip], '27017')
+    end
+    "ok"
+  rescue => e
+    "fail"
+  end
+
 
   # stats helpers
   def overall_stats
