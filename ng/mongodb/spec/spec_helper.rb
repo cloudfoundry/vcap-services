@@ -107,13 +107,13 @@ end
 def config_base_dir()
   config_path = File.join(PWD, "../config/")
   # detect dev_setup
-  dev_local = File.expand_path("~/.cloudfoundry_deployment_local")
-  if File.exist?(dev_local)
-    File.open(dev_local, "r") do |f|
-      f.read.match('CLOUD_FOUNDRY_CONFIG_PATH=([[:graph:]]+)')
-      config_path = $1
-    end
-  end
+#  dev_local = File.expand_path("~/.cloudfoundry_deployment_local")
+#  if File.exist?(dev_local)
+#    File.open(dev_local, "r") do |f|
+#      f.read.match('CLOUD_FOUNDRY_CONFIG_PATH=([[:graph:]]+)')
+#      config_path = $1
+#    end
+#  end
   config_path
 end
 
@@ -141,7 +141,8 @@ def get_node_config()
     :image_dir => '/tmp/mongo/images',
     :max_disk => 128,
     :supported_versions => parse_property(config, "supported_versions", Array),
-    :default_version => parse_property(config, "default_version", String)
+    :default_version => parse_property(config, "default_version", String),
+    :service_start_timeout => parse_property(config, "service_start_timeout", Integer)
   }
   options[:logger].level = Logger::DEBUG
   options
