@@ -210,7 +210,7 @@ class VCAP::Services::Postgresql::Node
       end
     rescue => e
       @logger.error("Fail to provision for #{e}: #{e.backtrace.join('|')}")
-      cleanup(provisionedservice) if provisionedservice
+#      cleanup(provisionedservice) if provisionedservice
       raise e
     end
   end
