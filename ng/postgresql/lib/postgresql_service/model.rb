@@ -74,6 +74,28 @@ module VCAP
             ret
           end
 
+          alias_method :delete_ori, :delete
+          def delete
+            # stop container
+            begin
+              stop if running?
+            rescue
+              # Catch the exception and record error log here to guarantee the following cleanup work is done.
+              logger.error("Fail to stop container when deleting service #{self[:name]}")
+            end
+            destroy! if saved?
+            # delete log and service directory
+            if self.class.quota
+              self.class.sh "rm -rf #{image_file}"
+            end
+            self.class.sh "rm -rf #{base_dir}"
+            self.class.sh "rm -rf #{log_dir}"
+            util_dirs.each do |util_dir|
+              self.class.sh "rm -rf  #{util_dir}"
+            end
+            # delete the record when it's saved
+          end
+
           def prepare
             raise "Missing name in WardenProvisionedservice instance" unless self.name
             raise "Missing port in WardenProvisionedservice instance" unless self.port
