@@ -27,6 +27,7 @@ class VCAP::Services::Rabbit::NodeBin < VCAP::Services::Base::NodeBin
     options[:proxy_bin] = parse_property(proxy_config, "bin", String)
     options[:proxy_window] = parse_property(proxy_config, "window", Integer)
     options[:proxy_limit] = parse_property(proxy_config, "size", Integer)
+    options[:versions] = parse_property(config, "versions", Hash)
     options
   end
 
