@@ -16,7 +16,7 @@ max_db_size: 20
 max_long_query: 3
 max_long_tx: 30
 kill_long_tx: true
-max_user_conns: 20
+max_user_conns: 30
 migration_nfs: /mnt/migration
 mysql:
   '5.1':
