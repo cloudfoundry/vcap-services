@@ -367,6 +367,7 @@ describe "Mysql server node" do
 
   it "should kill long queries" do
     pending "Disable for non-Percona server since the test behavior varies on regular Mysql server." unless @node.is_percona_server?(@db['name'])
+    @logger.warn("in the case of killing long queries")
     EM.run do
       db = new_instance
       @test_dbs[db] = []
@@ -392,6 +393,26 @@ describe "Mysql server node" do
             err = e
           ensure
             conn2.close
+          end
+        end
+
+        EM.add_timer(2) do
+          process_list = connection.query("show processlist")
+          process_list.each do |proc|
+            thread_id, user, db, command, time, info, state = %w(Id User db Command Time Info State).map{|o| proc[o]}
+            if (command == 'Query') and (user != 'root') then
+              @logger.warn("Killed long query: user:#{user} db:#{db} time:#{time} state: #{state} info:#{info} thread_id: #{thread_id}")
+            end
+          end
+        end
+
+        EM.add_timer(4) do
+          process_list = connection.query("show processlist")
+          process_list.each do |proc|
+            thread_id, user, db, command, time, info, state = %w(Id User db Command Time Info State).map{|o| proc[o]}
+            if (command == 'Query') and (user != 'root') then
+              @logger.warn("Killed long query: user:#{user} db:#{db} time:#{time} state: #{state} info:#{info} thread_id: #{thread_id}")
+            end
           end
         end
 
