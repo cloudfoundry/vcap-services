@@ -1,6 +1,6 @@
 ---
 capacity: 200
-plan: free
+plan: p200
 local_db: sqlite3:/var/vcap/services/rabbit/rabbit_node.db
 base_dir: /var/vcap/services/rabbit/instances
 mbus: nats://localhost:4222
@@ -22,6 +22,13 @@ admin_port_range:
 rabbitmq_server: rabbitmq-server
 service_log_dir: /var/vcap/sys/log/rabbit
 service_start_timeout: 30
+supported_versions: ['2.4', '2.8']
+default_version: '2.4'
+versions:
+  2.4:
+    config_template: /var/vcap/packages/rabbit_node_ng/services/ng/rabbit/resources/rabbitmq24.config.erb
+  2.8:
+    config_template: /var/vcap/packages/rabbit_node_ng/services/ng/rabbit/resources/rabbitmq28.config.erb
 # z_interval: 30
 # max_nats_payload: 1048576
 # fqdn_hosts: false
