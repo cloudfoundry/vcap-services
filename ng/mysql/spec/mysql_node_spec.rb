@@ -367,14 +367,15 @@ describe "Mysql server node" do
 
   it "should kill long queries" do
     pending "Disable for non-Percona server since the test behavior varies on regular Mysql server." unless @node.is_percona_server?(@db['name'])
+    @node.logger.warn("in the case of killing long queries")
     EM.run do
       db = new_instance
       @test_dbs[db] = []
       opts = @opts.dup
       opts[:max_long_query] = 1
-      conn = connect_to_mysql(db)
       node = new_node(opts)
       EM.add_timer(1) do
+        conn = connect_to_mysql(db)
         conn.query('create table test(id INT) engine innodb')
         conn.query('insert into test value(10)')
         conn.query('begin')
@@ -383,11 +384,13 @@ describe "Mysql server node" do
         old_counter = node.varz_details[:long_queries_killed]
 
         conn2 = connect_to_mysql(db)
+        conn.query("select 1 from test")
         err = nil
         t = Thread.new do
           begin
             # conn2 is blocked by conn, we use lock to simulate long queries
             conn2.query("select * from test for update")
+            conn2.query("commit")
           rescue => e
             err = e
           ensure
@@ -487,13 +490,15 @@ describe "Mysql server node" do
 
       # create stored procedure
       bind_conn = connect_to_mysql(binding)
-      new_bind_conn = connect_to_mysql(new_binding)
 
       bind_conn.query("create procedure myfunc(out mycount int) begin  select count(*) into mycount from test ; end")
       bind_conn.query("create procedure myfunc2(out mycount int) SQL SECURITY invoker begin select count(*) into mycount from test;end")
+      new_bind_conn = connect_to_mysql(new_binding)
       new_bind_conn.query("create procedure myfunc3(out mycount int) begin select count(*) into mycount from test; end")
       new_bind_conn.close if new_bind_conn
       @node.unbind(new_binding)
+      conn.close
+      conn = connect_to_mysql(db)
       conn.query("call defaultfunc(@testcount)")
       conn.query("select @testcount")
       conn.query("call myfunc(@testcount)")
@@ -502,6 +507,8 @@ describe "Mysql server node" do
       conn.query("select @testcount")
       conn.query("call myfunc3(@testcount)")
       conn.query("select @testcount")
+      bind_conn.close
+      bind_conn = connect_to_mysql(binding)
       bind_conn.query("call defaultfunc(@testcount)")
       bind_conn.query("select @testcount")
       bind_conn.query("call myfunc(@testcount)")
@@ -519,13 +526,19 @@ describe "Mysql server node" do
       @tmpfiles << tmp_file
       result = `mysqldump -h #{host} -P #{port} --user='#{user}' --password='#{password}' -R #{db['name']} | gzip > #{tmp_file}`
       bind_conn.query("drop procedure myfunc")
+      conn.close
+      conn = connect_to_mysql(db)
       conn.query("drop table test")
+      bind_conn.close
+      bind_conn = connect_to_mysql(binding)
       res = bind_conn.query("show procedure status")
       res.count().should == 3
       res = conn.query("show tables")
       res.count.should == 0
 
       # create a new table which should be deleted after restore
+      conn.close
+      conn = connect_to_mysql(db)
       conn.query("create table test2(id int)")
       bind_conn.close if bind_conn
       conn.close if conn
