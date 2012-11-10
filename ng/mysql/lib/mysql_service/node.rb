@@ -846,8 +846,19 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
   end
 
   def finish_start?
-    # Mysql does this in "setup_pool" function, so just return true here
-    true
+    path = log_dir + "/mysqld.err.log"
+    File.exist?(path) ? server_ready?(path) : false
+  end
+
+  def server_ready?(log_path)
+    lines = IO.readlines(log_path)
+    index = lines.rindex { |line| line =~ /ready for connections/}
+    return false unless index
+
+    #make sure it's not a previous server ready infomation
+    require 'date'
+    date_time = lines[index].match(/(\d{6})\s(\d{2}):(\d{2}):(\d{2})/)
+    Time.now - DateTime.parse(date_time[0]).to_time < 3
   end
 
   #directory helper
