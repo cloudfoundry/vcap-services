@@ -4,6 +4,7 @@ import (
 	"syscall"
 )
 
+const PARTIAL_SKB = 1 // not error
 const NO_ERROR = 0
 const READ_ERROR = -1
 const WRITE_ERROR = -2
@@ -22,6 +23,7 @@ type IOSocketPeer struct {
 
 	recvpacket func(*NetIOManager, int) int
 	sendpacket func(*NetIOManager, int) int
+	flush      func(*NetIOManager, int) int
 }
 
 type OutputQueue struct {
@@ -219,6 +221,13 @@ func (io *NetIOManager) ProxyNetRecv(fd int) (errno int) {
 	return NO_ERROR
 }
 
+func (io *NetIOManager) ProxyNetFlush(fd int) (errno int) {
+	if io.io_socket_peers[fd] != nil {
+		return io.io_socket_peers[fd].flush(io, fd)
+	}
+	return NO_ERROR
+}
+
 /******************************************/
 /*                                        */
 /*    network read/write io routines      */
@@ -284,7 +293,7 @@ func skb_write_with_filter(io *NetIOManager, fd int) (errno int) {
 	if pending, ok := io.pending_output_skbs[fd]; ok {
 		if pending.current_packet_remain_length == 0 {
 			if BUFFER_SIZE-pending.available_size < STANDARD_HEADER_SIZE {
-				return NO_ERROR
+				return PARTIAL_SKB
 			}
 
 			start_offset := pending.read_offset
@@ -419,6 +428,46 @@ func skb_write_without_filter(io *NetIOManager, fd int) (errno int) {
 	return UNKNOWN_ERROR
 }
 
+func flush_pending_skb(io *NetIOManager, fd int) (errno int) {
+	var peerfd int
+	var server bool
+
+	if peers, ok := io.io_socket_peers[fd]; ok {
+		if fd == peers.clientfd {
+			peerfd = peers.serverfd
+			server = true
+		} else {
+			peerfd = peers.clientfd
+			server = false
+		}
+	} else {
+		return UNKNOWN_ERROR
+	}
+
+	if server {
+		if _, ok := io.pending_output_skbs[peerfd]; ok {
+			for io.pending_output_skbs[peerfd].available_size < BUFFER_SIZE {
+				errno = skb_write_with_filter(io, peerfd)
+				if errno != NO_ERROR && errno != PARTIAL_SKB {
+					return errno
+				} else if errno == PARTIAL_SKB {
+					break
+				}
+			}
+		}
+	} else {
+		if _, ok := io.pending_output_skbs[peerfd]; ok {
+			for io.pending_output_skbs[peerfd].available_size < BUFFER_SIZE {
+				errno = skb_write_without_filter(io, peerfd)
+				if errno != NO_ERROR {
+					return errno
+				}
+			}
+		}
+	}
+	return NO_ERROR
+}
+
 /******************************************/
 /*                                        */
 /*       Internal Support Routines        */
@@ -472,13 +521,13 @@ func add_sock_peer(io *NetIOManager,
 		 *       when filter is enabled.
 		 */
 		server_peer = IOSocketPeer{clientfd, serverfd, serverinfo, skb_read,
-			skb_write_with_filter}
+			skb_write_with_filter, flush_pending_skb}
 	} else {
 		server_peer = IOSocketPeer{clientfd, serverfd, serverinfo, skb_read,
-			skb_write_without_filter}
+			skb_write_without_filter, flush_pending_skb}
 	}
 	client_peer := IOSocketPeer{clientfd, serverfd, clientinfo, skb_read,
-		skb_write_without_filter}
+		skb_write_without_filter, flush_pending_skb}
 	io.io_socket_peers[clientfd] = &client_peer
 	io.io_socket_peers[serverfd] = &server_peer
 }

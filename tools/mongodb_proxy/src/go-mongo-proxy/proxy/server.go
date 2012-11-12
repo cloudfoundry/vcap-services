@@ -183,12 +183,13 @@ func StartProxyServer(conf *ProxyConfig, proxy_log l4g.Logger) (err error) {
 						}
 					}
 
-					if errno != NO_ERROR {
+					if errno != NO_ERROR && errno != PARTIAL_SKB {
 						netio.ProxyNetClosePeers(fd)
 					}
 				}
 
 				if event&syscall.EPOLLRDHUP != 0 {
+					netio.ProxyNetFlush(fd)
 					sa := netio.ProxyNetConnInfo(fd)
 					if sa != nil {
 						ipaddr, port := parse_sockaddr(sa)
@@ -198,6 +199,7 @@ func StartProxyServer(conf *ProxyConfig, proxy_log l4g.Logger) (err error) {
 				}
 
 				if event&syscall.EPOLLHUP != 0 {
+					netio.ProxyNetFlush(fd)
 					sa := netio.ProxyNetConnInfo(fd)
 					if sa != nil {
 						ipaddr, port := parse_sockaddr(sa)
