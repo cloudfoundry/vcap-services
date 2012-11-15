@@ -32,7 +32,9 @@ class VCAP::Services::Echo::Node
     @local_db = options[:local_db]
     @port = options[:port]
     @base_dir = options[:base_dir]
-    @supported_versions = ["1.0"]
+
+    @supported_versions  = options[:supported_versions]
+    @default_version = options[:default_version]
   end
 
   def pre_send_announcement
