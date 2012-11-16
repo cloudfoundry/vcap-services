@@ -349,6 +349,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
   MONGO_TIMEOUT = 2
 
   SERVICE_PORT = 27017
+  PROXY_PORT   = 29017
 
   class << self
     def init(args)
@@ -480,8 +481,8 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
 
   def start_options
     options = super
-    options[:start_script] = {:script => "warden_service_ctl start #{version} #{mongod_exe_options}", :use_spawn => true}
-    options[:service_port] = SERVICE_PORT
+    options[:start_script] = {:script => "warden_service_ctl start #{adminpass} #{version} #{mongod_exe_options}", :use_spawn => true}
+    options[:service_port] = PROXY_PORT
     options
   end
 
