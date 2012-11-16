@@ -16,3 +16,4 @@ offering_mapping:
   fooservice:
     name: foo
     provider: fooprovider
+    token: fooprovidertoken
