@@ -12,7 +12,7 @@ pid: /var/vcap/sys/run/marketplace.pid
 # node_timeout is required by base async gateway class. This is defined in #{marketplace}.yml
 # since this value is specific to interactions with #{marketplace}
 
-marketplace: appdirect
+marketplace: test
 
 acls:
   wildcards:
@@ -21,3 +21,15 @@ acls:
 
 external_uri: "http://appdirect-mpgw.vcap.me"
 refresh_interval: 300
+
+cc_version: v2
+
+uaa_endpoint: "https://uaa.vcap.me"
+
+client_auth_credentials:
+  username: mpgwadmin
+  password: password
+
+service_tokens:
+  foo_provider: fooprovidertoken
+  testservice_TestProvider: testmarketplacetoken

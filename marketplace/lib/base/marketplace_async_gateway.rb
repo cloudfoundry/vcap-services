@@ -21,32 +21,6 @@ module VCAP
           super(opts)
         end
 
-        def load_cc_client(opts)
-          token_hdrs = VCAP::Services::Api::GATEWAY_TOKEN_HEADER
-          cc_req_hdrs = {
-            'Content-Type' => 'application/json',
-            token_hdrs     => @token,
-          }
-
-          cld_ctrl_uri     = http_uri(opts[:cloud_controller_uri] || "api.vcap.me")
-          cc_api_version   = opts[:cc_version] || "v1"
-
-          @logger.info("CloudController API version: #{cc_api_version}")
-          if cc_api_version == "v1"
-            VCAP::Services::Marketplace::CloudControllerClient.new(
-            {
-              :service_list_uri => "#{cld_ctrl_uri}/proxied_services/v1/offerings",
-              :offering_uri =>  "#{cld_ctrl_uri}/services/v1/offerings",
-              :cc_req_hdrs => cc_req_hdrs,
-              :marketplace_client_name => @marketplace_client.name,
-              :logger => @logger,
-              :proxy => opts[:proxy]
-            })
-          else
-            raise "Cloud Controller client unknown for version: #{cc_api_version}"
-          end
-        end
-
         def load_marketplace(opts)
           marketplace_lib_path = File.join(File.dirname(__FILE__), '..', 'marketplaces', opts[:marketplace])
           @logger.info("Loading marketplace: #{opts[:marketplace]} from: #{marketplace_lib_path}")
@@ -100,7 +74,15 @@ module VCAP
           @catalog = {}
           @marketplace_gateway_varz_details = {}
 
-          @cc_client = load_cc_client(opts)
+          token_hdrs = VCAP::Services::Api::GATEWAY_TOKEN_HEADER
+          @cc_client = VCAP::Services::Marketplace::CloudControllerClient.new(
+            {
+              :cloud_controller_uri => http_uri(opts[:cloud_controller_uri] || "api.vcap.me"),
+              :cc_req_hdrs => { 'Content-Type' => 'application/json', token_hdrs => @token },
+              :marketplace_client_name => @marketplace_client.name,
+              :logger => @logger,
+              :proxy => opts[:proxy]
+            })
 
           Kernel.at_exit do
             if EM.reactor_running?
@@ -223,7 +205,7 @@ module VCAP
           # Process all services currently in marketplace
           if @catalog_in_marketplace
             @catalog_in_marketplace.each do |label, bsvc|
-              req = @marketplace_client.generate_cc_advertise_request(bsvc["id"], bsvc, active)
+              req = @marketplace_client.generate_cc_advertise_request(bsvc, active)
               advertise_service_to_cc(req)
             end
             @marketplace_gateway_varz_details[:active_offerings] = @catalog_in_marketplace.size
