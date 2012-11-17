@@ -19,7 +19,7 @@ module VCAP
   module Services
     module Redis
       class Node < VCAP::Services::Base::Node
-        class ProvisionedService < VCAP::Services::Base::WardenService
+        class ProvisionedService < VCAP::Services::Base::Warden::Service
         end
       end
     end
@@ -32,6 +32,7 @@ class VCAP::Services::Redis::Node
   include VCAP::Services::Redis::Util
   include VCAP::Services::Redis
   include VCAP::Services::Base::Utils
+  include VCAP::Services::Base::Warden::NodeUtils
 
   def initialize(options)
     super(options)
@@ -54,6 +55,8 @@ class VCAP::Services::Redis::Node
     @options = options
     @supported_versions = options[:supported_versions]
     @default_version = options[:default_version]
+    options[:failover_actions] = ["restart"]
+    warden_node_init(options)
   end
 
   def migrate_saved_instances_on_startup
@@ -68,15 +71,18 @@ class VCAP::Services::Redis::Node
   def pre_send_announcement
     migrate_saved_instances_on_startup
 
-    @capacity_lock.synchronize do
-      start_instances(ProvisionedService.all)
-    end
+    start_all_instances
+    @capacity_lock.synchronize{ @capacity -= ProvisionedService.all.size }
+  end
+
+  def service_instances
+    ProvisionedService.all
   end
 
   def shutdown
     super
     @logger.info("Shutting down instances..")
-    stop_instances(ProvisionedService.all)
+    stop_all_instances
     true
   end
 
