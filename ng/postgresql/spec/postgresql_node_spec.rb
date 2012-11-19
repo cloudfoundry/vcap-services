@@ -342,6 +342,42 @@ describe "Postgresql node normal cases" do
     end
   end
 
+  it "should clean up if service is unprovisioned" do
+    class << @node
+      attr_reader :free_ports
+    end if @opts[:use_warden]
+    EM.run do
+      free_ports_size = @node.free_ports.size if @opts[:use_warden]
+      db = @node.provision(@default_plan, nil, @default_version)
+      @test_dbs[db] = []
+      binding = @node.bind(db['name'], @default_opts)
+      @test_dbs[db] << binding
+      @node.pgProvisionedService.get(db['name']).should_not == nil
+      @node.fetch_global_connection(db['name']).should_not == nil
+      if @opts[:use_warden]
+        @node.pgBindUser.all(:wardenprovisionedservice_name => db['name']).count.should_not == 0
+        @node.free_ports.include?(db["port"]).should_not == true
+        @node.free_ports.size.should == (free_ports_size - 1)
+      else
+        @node.pgBindUser.all(:provisionedservice_name => db['name']).count.should_not == 0
+      end
+
+      @node.unprovision(db["name"], [])
+      @node.pgProvisionedService.get(db['name']).should ==  nil
+      if @opts[:use_warden]
+        @node.fetch_global_connection(db['name']).should == {:time => 0, :conn => nil}
+        @node.pgBindUser.all(:wardenprovisionedservice_name => db['name']).count.should == 0
+        @node.free_ports.include?(db["port"]).should == true
+        @node.free_ports.size.should == free_ports_size
+      else
+        # gloabl connection should not be deleted for it is shared among all instances
+        @node.fetch_global_connection(db['name']).should_not == nil
+        @node.pgBindUser.all(:provisionedservice_name => db['name']).count.should == 0
+      end
+      EM.stop
+    end
+  end
+
   it "should return proper error if unprovision a not existing instance" do
     EM.run do
       expect {
@@ -1165,6 +1201,7 @@ describe "Postgresql node normal cases" do
 
   after:each do
     @node.class.setup_datamapper(:default, @opts[:local_db])
+    EM.run do
     @test_dbs.keys.each do |db|
       begin
         name = db["name"]
@@ -1174,7 +1211,8 @@ describe "Postgresql node normal cases" do
         @node.logger.info("Error during cleanup #{e}")
       end
     end if @test_dbs
-
+    EM.add_timer(0.1) {EM.stop}
+    end
     opts = @opts.dup
     node =nil
     if @opts[:use_warden]
@@ -1184,16 +1222,16 @@ describe "Postgresql node normal cases" do
     end
     EM.run do
       node = VCAP::Services::Postgresql::Node.new(opts)
+      @new_test_dbs.keys.each do |db|
+        begin
+          name = db["name"]
+          node.unprovision(name, @new_test_dbs[db])
+          @node.logger.info("Clean up temp database: #{name}")
+        rescue => e
+        end
+      end if @new_test_dbs
       EM.add_timer(0.1) {EM.stop}
     end
-    @new_test_dbs.keys.each do |db|
-      begin
-        name = db["name"]
-        node.unprovision(name, @new_test_dbs[db])
-        @node.logger.info("Clean up temp database: #{name}")
-      rescue => e
-      end
-    end if @new_test_dbs
     new_local_db = @opts[:local_db]+"_new.db"
     new_local_db.slice! "sqlite3:"
     @node.logger.info("Clean up temp local db.")
