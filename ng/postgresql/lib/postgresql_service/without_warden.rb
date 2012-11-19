@@ -216,7 +216,6 @@ module VCAP::Services::Postgresql::WithoutWarden
     @connection_mutex.synchronize do
       @connections[instance.name] ||= @connections[instance.version]
     end
-
     @connections[instance.name]
   end
 
@@ -360,8 +359,14 @@ module VCAP::Services::Postgresql::WithoutWarden
     end
   end
 
+  def delete_global_connection(name)
+    @connection_mutex.synchronize do
+      @connections.delete(name)
+    end
+  end
+
   def method_missing(method_name, *args, &block)
-    no_ops = [:delete_global_connection]
+    no_ops = []
     super unless no_ops.include?(method_name)
   end
 end
