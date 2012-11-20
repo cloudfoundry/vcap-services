@@ -51,6 +51,7 @@ class VCAP::Services::Postgresql::Node
     @provision_served = 0
     @binding_served = 0
     @supported_versions = options[:supported_versions]
+    @default_version = options[:default_version]
     @use_warden = @options[:use_warden] || false
     if @use_warden
       require "postgresql_service/with_warden"
@@ -80,8 +81,19 @@ class VCAP::Services::Postgresql::Node
     end
   end
 
+  def migrate_saved_instances_on_startup
+    pgProvisionedService.all.each do |instance|
+      if instance.version.to_s.empty?
+        instance.version = @default_version
+        @logger.warn("Unable to set version for: #{instance.inspect}") unless instance.save
+      end
+    end
+  end
+
   def pre_send_announcement
     self.class.setup_datamapper(:default, @local_db)
+    migrate_saved_instances_on_startup
+
     pre_send_announcement_prepare
     @capacity_lock.synchronize do
       pre_send_announcement_internal
