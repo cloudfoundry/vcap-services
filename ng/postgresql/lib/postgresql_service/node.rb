@@ -323,7 +323,7 @@ class VCAP::Services::Postgresql::Node
         return false
       end
       exe_create_database(conn, name, @max_db_conns)
-      if not create_database_user(provisionedservice, bindusers[0], false) then
+      unless create_database_user(provisionedservice, bindusers[0], false)
         raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
       end
       @logger.info("Done creating #{provisionedservice.inspect}. Took #{Time.now - start}.")
@@ -344,7 +344,7 @@ class VCAP::Services::Postgresql::Node
 
     unless global_conn
       @logger.error("Fail to connect instance #{name} to create database user")
-      return true
+      return false
     end
 
     user = binduser.user
