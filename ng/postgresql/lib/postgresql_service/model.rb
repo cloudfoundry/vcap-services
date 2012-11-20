@@ -129,6 +129,10 @@ module VCAP
               :use_spawn => true
             }
             options[:service_port] = service_port
+            options[:post_start_script] = {
+              :script => "post_service_start.sh",
+              :use_root => true
+            }
             options
           end
 
