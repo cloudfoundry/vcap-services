@@ -9,7 +9,7 @@ module VCAP
           # property plan is deprecated. The instances in one node have same plan.
           property :plan,       Integer, :required => true
           property :quota_exceeded,  Boolean, :default => false
-          property :version,    String,  :required => true
+          property :version,    String
           has n, :bindusers
 
           def prepare
@@ -58,7 +58,7 @@ module VCAP
           property :ip,               String
           property :default_username, String
           property :default_password, String
-          property :version,          String,  :required => true
+          property :version,          String
           has n, :wardenbindusers
 
           class << self

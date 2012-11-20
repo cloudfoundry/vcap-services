@@ -84,7 +84,17 @@ class VCAP::Services::Mysql::Node
     Mysql2::Client.default_timeout = @connection_wait_timeout
     Mysql2::Client.logger = @logger
     @supported_versions = options[:supported_versions]
+    @default_version = options[:default_version]
     mysqlProvisionedService.init(options)
+  end
+
+  def migrate_saved_instances_on_startup
+    mysqlProvisionedService.all.each do |instance|
+      if instance.version.to_s.empty?
+        instance.version = @default_version
+        @logger.warn("Unable to set version for: #{instance.inspect}") unless instance.save
+      end
+    end
   end
 
   def pre_send_announcement
@@ -92,6 +102,8 @@ class VCAP::Services::Mysql::Node
 
     DataMapper.setup(:default, @local_db)
     DataMapper::auto_upgrade!
+
+    migrate_saved_instances_on_startup
 
     pre_send_announcement_internal
 
