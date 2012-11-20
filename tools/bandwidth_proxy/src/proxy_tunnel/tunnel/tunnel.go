@@ -86,6 +86,11 @@ var pathAddStep = [...]TunnelStep{
 		Action: func(tc *TunnelConn) (err error) {
 			return syscall.EpollCtl(epollFd, syscall.EPOLL_CTL_ADD, tc.IFd, &syscall.EpollEvent{Events: syscall.EPOLLIN | syscall.EPOLLOUT, Fd: int32(tc.IFd)})
 		}},
+	{
+		ErrFmt: "Port [%d] set outer fd rcvbuf size error [%s]",
+		Action: func(tc *TunnelConn) (err error) {
+			return syscall.SetsockoptInt(tc.EFd, syscall.SOL_SOCKET, syscall.SO_RCVBUF, 2048)
+		}},
 }
 
 func (t *Tunnel) newConn() {
