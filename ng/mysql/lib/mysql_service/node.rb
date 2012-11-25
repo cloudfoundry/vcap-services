@@ -48,6 +48,7 @@ class VCAP::Services::Mysql::Node
         include VCAP::Services::Base::Utils
         include VCAP::Services::Base::Warden::NodeUtils
       end
+      warden_node_init(options)
     else
       require "mysql_service/without_warden"
       class << self; include VCAP::Services::Mysql::WithoutWarden; end
@@ -114,6 +115,10 @@ class VCAP::Services::Mysql::Node
     get_qps
 
     check_db_consistency
+  end
+
+  def service_instances
+    ProvisionedService.all
   end
 
   def self.mysqlProvisionedServiceClass(use_warden)

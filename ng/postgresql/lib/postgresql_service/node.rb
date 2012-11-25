@@ -58,6 +58,7 @@ class VCAP::Services::Postgresql::Node
       @service_start_timeout = options[:service_start_timeout] || 3
       init_ports(options[:port_range])
       pgProvisionedService.init(options)
+      warden_node_init(options)
     else
       require "postgresql_service/without_warden"
       extend VCAP::Services::Postgresql::WithoutWarden
@@ -88,6 +89,10 @@ class VCAP::Services::Postgresql::Node
     end
     check_db_consistency
     setup_timers
+  end
+
+  def service_instances
+    ProvisionedService.all
   end
 
   def announcement

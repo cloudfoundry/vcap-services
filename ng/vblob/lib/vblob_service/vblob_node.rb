@@ -54,19 +54,23 @@ class VCAP::Services::VBlob::Node
     init_ports(options[:port_range])
     @service_start_timeout = @options[:service_start_timeout] || 3
     ProvisionedService.init(options)
+    warden_node_init(options)
   end
 
   # handle the cases which has already been in the local sqlite database
   def pre_send_announcement
-    @capacity_lock.synchronize do
-      start_instances(ProvisionedService.all)
-    end
+    start_all_instances
+    @capacity_lock.synchronize{ @capacity -= ProvisionedService.all.size }
+  end
+
+  def service_instances
+    ProvisionedService.all
   end
 
   def shutdown
     super
     @logger.info("Shutting down instances..")
-    stop_instances(ProvisionedService.all)
+    stop_all_instances
   end
 
   def announcement
@@ -224,7 +228,7 @@ class VCAP::Services::VBlob::Node
     @logger.info("disable_instance request: service_credential=#{service_credential}, binding_credentials=#{binding_credentials}")
     provisioned_service = ProvisionedService.get(service_credential['name'])
     raise ServiceError.new(ServiceError::NOT_FOUND, service_credential['name']) if provisioned_service.nil?
-    provisioned_service.stop if provisioned_service.running?
+    provisioned_service.stop
     true
   rescue => e
     @logger.warn(e)
@@ -321,12 +325,6 @@ class VCAP::Services::VBlob::Node::ProvisionedService
     options[:start_script] = {:script => "warden_service_ctl start", :use_spawn => true}
     options[:service_port] = service_port
     options[:additional_binds] = [{:src_path => tmp_dir, :dst_path => "/store/tmp",}]
-    options
-  end
-
-  def stop_options
-    options = super
-    options[:stop_script] = {:script => "warden_service_ctl stop"}
     options
   end
 
