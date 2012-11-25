@@ -47,6 +47,9 @@ class VCAP::Services::Mysql::Node
         include VCAP::Services::Mysql::WithWarden
         include VCAP::Services::Base::Utils
         include VCAP::Services::Base::Warden::NodeUtils
+        def self.service_instances
+          mysqlProvisionedService.all
+        end
       end
     else
       require "mysql_service/without_warden"
@@ -86,6 +89,7 @@ class VCAP::Services::Mysql::Node
     Mysql2::Client.logger = @logger
     @supported_versions = options[:supported_versions]
     mysqlProvisionedService.init(options)
+    @options = options
   end
 
   def pre_send_announcement
@@ -114,6 +118,7 @@ class VCAP::Services::Mysql::Node
     get_qps
 
     check_db_consistency
+    warden_node_init(@options)
   end
 
   def self.mysqlProvisionedServiceClass(use_warden)

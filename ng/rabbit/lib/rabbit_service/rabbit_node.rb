@@ -64,15 +64,19 @@ class VCAP::Services::Rabbit::Node
   end
 
   def pre_send_announcement
-    @capacity_lock.synchronize do
-      start_instances(ProvisionedService.all)
-    end
+    start_all_instances
+    @capacity_lock.synchronize{ @capacity -= ProvisionedService.all.size }
+    warden_node_init(@options)
+  end
+
+  def service_instances
+    ProvisionedService.all
   end
 
   def shutdown
     super
     @logger.info("Shutting down instances..")
-    stop_instances(ProvisionedService.all)
+    stop_all_instances
     true
   end
 
@@ -459,12 +463,6 @@ EOF
     options = super
     options[:start_script] = {:script => "warden_service_ctl start #{self[:version]} #{self[:name]}", :use_spawn => true}
     options[:need_map_port] = false
-    options
-  end
-
-  def stop_options
-    options = super
-    options[:stop_script] = {:script => "warden_service_ctl stop"}
     options
   end
 

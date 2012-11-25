@@ -83,11 +83,10 @@ class VCAP::Services::Postgresql::Node
   def pre_send_announcement
     self.class.setup_datamapper(:default, @local_db)
     pre_send_announcement_prepare
-    @capacity_lock.synchronize do
-      pre_send_announcement_internal
-    end
+    pre_send_announcement_internal
     check_db_consistency
     setup_timers
+    warden_node_init(@options)
   end
 
   def announcement
