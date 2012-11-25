@@ -47,7 +47,11 @@ class VCAP::Services::Mysql::Node
         include VCAP::Services::Mysql::WithWarden
         include VCAP::Services::Base::Utils
         include VCAP::Services::Base::Warden::NodeUtils
+        def self.service_instances
+          mysqlProvisionedService.all
+        end
       end
+      warden_node_init(options)
     else
       require "mysql_service/without_warden"
       class << self; include VCAP::Services::Mysql::WithoutWarden; end
