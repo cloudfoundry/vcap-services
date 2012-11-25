@@ -35,7 +35,8 @@ module VCAP::Services::Postgresql::WithWarden
   end
 
   def pre_send_announcement_internal
-    start_instances(pgProvisionedService.all)
+    start_all_instances
+    @capacity_lock.synchronize{ @capacity -= pgProvisionedService.all.size }
     pgProvisionedService.all.each do |provisionedservice|
       global_connection(provisionedservice, true)
       migrate_instance provisionedservice
@@ -251,7 +252,7 @@ module VCAP::Services::Postgresql::WithWarden
   def shutdown
     super
     @logger.info("Shutting down instances..")
-    stop_instances(pgProvisionedService.all)
+    stop_all_instances
   end
 
   def get_inst_port(instance)

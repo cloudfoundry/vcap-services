@@ -21,9 +21,8 @@ module VCAP::Services::Mysql::WithWarden
     @pool_mutex = Mutex.new
     @pools = {}
 
-    @capacity_lock.synchronize do
-      start_instances(mysqlProvisionedService.all)
-    end
+    start_all_instances
+    @capacity_lock.synchronize{ @capacity -= mysqlProvisionedService.all.size }
 
     mysqlProvisionedService.all.each do |instance|
       setup_pool(instance)
@@ -62,7 +61,7 @@ module VCAP::Services::Mysql::WithWarden
   def shutdown
     super
     @logger.info("Shutting down instances..")
-    stop_instances(mysqlProvisionedService.all)
+    stop_all_instances
   end
 
   def setup_pool(instance)

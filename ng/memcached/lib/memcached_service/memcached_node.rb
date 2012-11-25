@@ -103,6 +103,7 @@ class VCAP::Services::Memcached::Node
 
     @default_version = "1.4"
     @supported_versions = ["1.4"]
+    warden_node_init(options)
   end
 
   def migrate_saved_instances_on_startup
@@ -119,19 +120,19 @@ class VCAP::Services::Memcached::Node
     start_provisioned_instances
   end
 
+  def service_instances
+    ProvisionedService.all
+  end
+
   def start_provisioned_instances
-     @capacity_lock.synchronize do
-      start_instances(ProvisionedService.all)
-    end
+    start_all_instances
+    @capacity_lock.synchronize{ @capacity -= ProvisionedService.all.size }
   end
 
   def shutdown
     super
     @logger.info("Shutting down instances..")
-    ProvisionedService.all.each do |p_service|
-      @logger.debug("Try to terminate memcached container: #{p_service.container}")
-      p_service.stop if p_service.running?
-    end
+    stop_all_instances
   end
 
   def announcement
@@ -335,12 +336,6 @@ class VCAP::Services::Memcached::Node::ProvisionedService
     options = super
     options[:start_script] = {:script => start_script, :use_spawn => true}
     options[:service_port] = SERVICE_PORT
-    options
-  end
-
-  def stop_options
-    options = super
-    options[:stop_script] = {:script => "warden_service_ctl stop"}
     options
   end
 
