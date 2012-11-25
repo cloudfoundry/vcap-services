@@ -86,6 +86,7 @@ class VCAP::Services::Mysql::Node
     Mysql2::Client.logger = @logger
     @supported_versions = options[:supported_versions]
     mysqlProvisionedService.init(options)
+    warden_node_init(options)
   end
 
   def pre_send_announcement
@@ -114,6 +115,10 @@ class VCAP::Services::Mysql::Node
     get_qps
 
     check_db_consistency
+  end
+
+  def service_instances
+    ProvisionedService.all
   end
 
   def self.mysqlProvisionedServiceClass(use_warden)

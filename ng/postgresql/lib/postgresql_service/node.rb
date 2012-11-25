@@ -62,6 +62,7 @@ class VCAP::Services::Postgresql::Node
       require "postgresql_service/without_warden"
       extend VCAP::Services::Postgresql::WithoutWarden
     end
+    warden_node_init(options)
   end
 
   def self.pgProvisionedServiceClass(use_warden)
@@ -88,6 +89,10 @@ class VCAP::Services::Postgresql::Node
     end
     check_db_consistency
     setup_timers
+  end
+
+  def service_instances
+    ProvisionedService.all
   end
 
   def announcement
