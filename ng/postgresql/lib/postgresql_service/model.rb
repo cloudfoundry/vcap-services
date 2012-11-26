@@ -122,10 +122,19 @@ module VCAP
             end
           end
 
+          def bin_dir
+            case version
+            when "9.1"
+              File.join(self.class.bin_dir, "postgresql91")
+            else
+              File.join(self.class.bin_dir, "postgresql")
+            end
+          end
+
           def start_options
             options = super
             options[:start_script] = {
-              :script => "warden_service_ctl start #{version}",
+              :script => "#{script_dir}/warden_service_ctl start #{bin_dir} #{base_dir} #{log_dir} #{service_port}",
               :use_spawn => true
             }
             options[:service_port] = service_port
@@ -135,7 +144,7 @@ module VCAP
           def stop_options
             options = super
             options[:stop_script] = {
-              :script => "warden_service_ctl stop #{version}"
+              :script => "#{script_dir}/warden_service_ctl stop #{bin_dir} #{base_dir} #{log_dir} #{service_port}",
             }
             options
           end

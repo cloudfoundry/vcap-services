@@ -487,7 +487,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
 
   def start_options
     options = super
-    options[:start_script] = {:script => "warden_service_ctl start #{version} #{mongod_exe_options}", :use_spawn => true}
+    options[:start_script] = {:script => "#{service_script} start #{bin_dir} #{base_dir} #{log_dir} #{conf_dir} #{mongod_exe_options}", :use_spawn => true}
     options[:service_port] = SERVICE_PORT
     options
   end
@@ -500,7 +500,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
 
   def stop_options
     options = super
-    options[:stop_script] = {:script => "warden_service_ctl stop"}
+    options[:stop_script] = {:script => "#{service_script} stop"}
     options
   end
 
@@ -522,11 +522,6 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     true
   rescue => e
     false
-  end
-
-  # diretory helper
-  def data_dir
-    File.join(base_dir, "data")
   end
 
   def add_user(username, password)
@@ -595,11 +590,11 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
   end
 
   def mongod
-    @@mongod_path[version]
+    "#{bin_dir}/bin/mongod"
   end
 
   def mongo
-    "/usr/share/mongodb/mongodb-#{version}/mongo"
+    "#{bin_dir}/bin/mongo"
   end
 
   def mongod_exe_options

@@ -457,15 +457,20 @@ EOF
 
   def start_options
     options = super
-    options[:start_script] = {:script => "warden_service_ctl start #{self[:version]} #{self[:name]}", :use_spawn => true}
+    options[:start_script] = {:script => "#{service_script} start #{name} #{bin_dir} #{base_dir} #{log_dir} #{erlang_dir}", :use_spawn => true}
+    options[:bind_dirs] << {:src => erlang_dir}
     options[:need_map_port] = false
     options
   end
 
   def stop_options
     options = super
-    options[:stop_script] = {:script => "warden_service_ctl stop"}
+    options[:stop_script] = {:script => "#{service_script} stop"}
     options
+  end
+
+  def erlang_dir
+    File.readlink(File.join(self.class.bin_dir, "erlang"))
   end
 
   def finish_start?
