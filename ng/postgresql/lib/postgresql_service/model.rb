@@ -125,7 +125,7 @@ module VCAP
           def start_options
             options = super
             options[:start_script] = {
-              :script => "warden_service_ctl start #{version}",
+              :script => "#{service_script} start #{bin_dir} #{base_dir} #{log_dir} #{service_port}",
               :use_spawn => true
             }
             options[:service_port] = service_port
@@ -135,7 +135,7 @@ module VCAP
           def stop_options
             options = super
             options[:stop_script] = {
-              :script => "warden_service_ctl stop #{version}"
+              :script => "#{service_script} #{bin_dir} #{base_dir} #{log_dir} #{service_port}",
             }
             options
           end
