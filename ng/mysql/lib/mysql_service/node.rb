@@ -817,6 +817,7 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
       provisioned_service.version  = version
 
       provisioned_service.prepare_filesystem(@max_disk)
+      FileUtils.mkdir_p(provisioned_service.tmp_dir)
       provisioned_service
     end
   end
@@ -830,13 +831,22 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
     end
   end
 
+  def bin_dir
+    case version
+    when "5.5"
+      File.join(self.class.bin_dir, "mysql55")
+    else
+      File.join(self.class.bin_dir, "mysql")
+    end
+  end
+
   ["start", "stop"].each do |op|
     define_method "#{op}_script".to_sym do
       case version
       when "5.5"
-        "warden_service_ctl #{op} 55"
+        "#{service_script} #{op} 55 #{bin_dir} /var/vcap/sys/run/mysqld /var/vcap/store/mysql /var/vcap/sys/log/mysql #{conf_dir}"
       else
-        "warden_service_ctl #{op} ''"
+        "#{service_script} #{op} '' #{bin_dir} /var/vcap/sys/run/mysqld /var/vcap/store/mysql /var/vcap/sys/log/mysql #{conf_dir}"
       end
     end
   end
@@ -845,6 +855,15 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
     options = super
     options[:start_script] = {:script => start_script, :use_spawn => true}
     options[:service_port] = service_port
+    options[:bind_dirs] = []
+    options[:bind_dirs] << {:src => base_dir, :dst => "/var/vcap/sys/run/mysqld"}
+    options[:bind_dirs] << {:src => data_dir, :dst => "/var/vcap/store/mysql"}
+    options[:bind_dirs] << {:src => log_dir, :dst => "/var/vcap/sys/log/mysql"}
+    options[:bind_dirs] << {:src => tmp_dir, :dst => "/var/vcap/data/mysql_tmp"}
+    options[:bind_dirs] << {:src => conf_dir}
+    options[:bind_dirs] << {:src => bin_dir}
+    options[:bind_dirs] << {:src => script_dir}
+    options[:bind_dirs] << {:src => File.join(self.class.bin_dir, "common")}
     options
   end
 
@@ -854,13 +873,12 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
     options
   end
 
+  def tmp_dir
+    File.join(base_dir, "tmp")
+  end
+
   def finish_start?
     # Mysql does this in "setup_pool" function, so just return true here
     true
-  end
-
-  #directory helper
-  def data_dir
-    File.join(base_dir, "data")
   end
 end
