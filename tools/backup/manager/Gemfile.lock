@@ -32,8 +32,8 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-services-base.git
-  revision: bbd351e5d4864661d7f94ec93e6eb9d5e399e419
-  ref: bbd351e5
+  revision: 6deca0c767c1bef17bd8ec85f5ce9c86724a2601
+  ref: 6deca0c
   specs:
     vcap_services_base (0.1.16)
       curb (~> 0.7.16)
@@ -137,7 +137,7 @@ GEM
     mime-types (1.19)
     mocha (0.10.0)
       metaclass (~> 0.0.1)
-    multi_json (1.3.7)
+    multi_json (1.4.0)
     multipart-post (1.1.5)
     nats (0.4.24)
       daemons (>= 1.1.5)
