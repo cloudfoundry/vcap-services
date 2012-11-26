@@ -377,7 +377,8 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
       p_service.version   = args['version']
 
       p_service.prepare_filesystem(self.max_disk)
-      FileUtils.mkdir_p(p_service.data_dir)
+      FileUtils.cp(File.join(p_service.conf_dir, "mongodb.conf"), p_service.base_dir)
+      FileUtils.cp(File.join(p_service.conf_dir, "mongodb_proxy.yml"), p_service.base_dir)
       p_service
     end
 
@@ -486,9 +487,13 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     super
   end
 
+  def proxy_bin_dir
+    self.class.bin_dir["proxy"]
+  end
+
   def start_options
     options = super
-    options[:start_script] = {:script => "warden_service_ctl start #{adminpass} #{version} #{mongod_exe_options}", :use_spawn => true}
+    options[:start_script] = {:script => "#{service_script} start #{bin_dir} #{proxy_bin_dir} #{base_dir} #{log_dir} #{adminpass} #{mongod_exe_options}", :use_spawn => true}
     options[:service_port] = PROXY_PORT
     options
   end
@@ -496,12 +501,6 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
   def first_start_options
     options = super
     options[:post_start_script] = {:script => "#{mongo} localhost:#{SERVICE_PORT}/admin --eval 'db.addUser(\"#{self[:admin]}\", \"#{self[:adminpass]}\")'"}
-    options
-  end
-
-  def stop_options
-    options = super
-    options[:stop_script] = {:script => "warden_service_ctl stop"}
     options
   end
 
@@ -523,11 +522,6 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     true
   rescue => e
     false
-  end
-
-  # diretory helper
-  def data_dir
-    File.join(base_dir, "data")
   end
 
   def add_user(username, password)
@@ -596,11 +590,11 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
   end
 
   def mongod
-    @@mongod_path[version]
+    "#{bin_dir}/bin/mongod"
   end
 
   def mongo
-    "/usr/share/mongodb/mongodb-#{version}/mongo"
+    "#{bin_dir}/bin/mongo"
   end
 
   def mongod_exe_options
