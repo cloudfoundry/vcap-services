@@ -256,6 +256,7 @@ module VCAP
               (@connections - @checked_out).each do |conn|
                 @connections.delete(conn) unless conn.verify!(@connections.size > @min)
               end
+              @size = @connections.size
             end
             true
           end
@@ -309,6 +310,7 @@ module VCAP
                   conn = Connection.new(@options)
                   @connections << conn
                   @checked_out << conn
+                  @size += 1
                   return conn
                 end
 
