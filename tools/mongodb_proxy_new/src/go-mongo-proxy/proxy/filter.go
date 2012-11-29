@@ -25,7 +25,7 @@ type ConnectionInfo struct {
 
 type Filter interface {
 	FilterEnabled() bool
-	PassFilter() bool
+	PassFilter(op_code int) bool
 	StorageMonitor()
 }
 
@@ -48,9 +48,9 @@ func (filter *ProxyFilterImpl) FilterEnabled() bool {
 	return filter.config.ENABLED
 }
 
-func (filter *ProxyFilterImpl) PassFilter() bool {
-	// FIXME: fake filter handler
-	return true
+func (filter *ProxyFilterImpl) PassFilter(op_code int) bool {
+	return op_code != OP_UPDATE && op_code != OP_INSERT ||
+		atomic.LoadUint32(&filter.blocked) == UNBLOCKED
 }
 
 func (filter *ProxyFilterImpl) StorageMonitor() {
