@@ -6,9 +6,9 @@ import (
 )
 
 /*
-* TCP packet length is limited by the 'window size' field in TCP packet header
-* which is a 16-bit integer value, that is to say, the maximum size of each
-* TCP packet payload is 64K.
+ * TCP packet length is limited by the 'window size' field in TCP packet header
+ * which is a 16-bit integer value, that is to say, the maximum size of each
+ * TCP packet payload is 64K.
  */
 const BUFFER_SIZE = 64 * 1024
 
@@ -31,7 +31,13 @@ func (session *ProxySessionImpl) Process() {
 }
 
 func (session *ProxySessionImpl) ForwardClientMsg() {
-	buffer := make([]byte, BUFFER_SIZE)
+	var buffer []byte
+	var current_pkt_op, current_pkt_remain_len, nstart int
+
+	buffer = make([]byte, BUFFER_SIZE)
+	current_pkt_op = OP_UNKNOWN
+	current_pkt_remain_len = 0
+	nstart = 0
 
 	clientfd := session.clientconn
 	serverfd := session.serverconn
@@ -44,7 +50,12 @@ func (session *ProxySessionImpl) ForwardClientMsg() {
 		default:
 		}
 
-		nread, err := clientfd.Read(buffer)
+		/*
+		 * Refer to Golang src/pkg/net/fd.go#L416
+		 *
+		 * Here fd is NONBLOCK, but Golang has handled EAGAIN/EOF within Read function.
+		 */
+		nread, err := clientfd.Read(buffer[nstart:BUFFER_SIZE])
 		if err != nil {
 			if err == io.EOF {
 				logger.Debug("TCP session with mongodb client will be closed soon.")
@@ -54,18 +65,53 @@ func (session *ProxySessionImpl) ForwardClientMsg() {
 			continue
 		}
 
+		if current_pkt_remain_len == 0 {
+			pkt_len, op_code := parseMsgHeader(buffer[0:(nstart + nread)])
+			current_pkt_op = int(op_code)
+			current_pkt_remain_len = int(pkt_len)
+		}
+
+		if current_pkt_remain_len == 0 {
+			// Process further only when we have seen complete mongodb packet header,
+			// whose length is 16 bytes.
+			nstart += nread
+			continue
+		}
+
 		// filter process
-		if filter.FilterEnabled() && !filter.PassFilter() {
+		if filter.FilterEnabled() && !filter.PassFilter(current_pkt_op) {
 			logger.Debug("TCP session with mongodb client is blocked by filter.")
 			break
 		}
 
-		nwrite, err := serverfd.Write(buffer[0:nread])
-		if err != nil || nwrite < nread {
-			// TODO: error detection & handling
+		/*
+		 * Refer to Golang src/pkg/net/fd.go#L503
+		 *
+		 * Here fd is NONBLOCK, but the Write function ensure 'ALL' bytes will be sent out unless
+		 * there is something wrong.
+		 */
+		nwrite, err := serverfd.Write(buffer[0:(nstart + nread)])
+		if err != nil {
+			if err == io.ErrUnexpectedEOF {
+				logger.Debug("TCP session with mongodb server encounter unexpected EOF: [%v].", err)
+				break
+			}
 			logger.Debug("TCP write to server error: [%v].", err)
 			continue
 		}
+
+		/*
+		 * One corner case
+		 *
+		 * If a malformed application establishes a 'RAW' tcp connection to our proxy, then
+		 * this application may fill up the packet header length to be M, while the real packet
+		 * length is N and N > M, we must prevent this case.
+		 */
+		current_pkt_remain_len -= nwrite
+		if current_pkt_remain_len < 0 {
+			current_pkt_remain_len = 0
+		}
+		nstart = 0
 	}
 
 	// TCP connection half disconnection
@@ -98,9 +144,12 @@ func (session *ProxySessionImpl) ForwardServerMsg() {
 			continue
 		}
 
-		nwrite, err := clientfd.Write(buffer[0:nread])
-		if err != nil || nwrite < nread {
-			// TODO: error detection & handling
+		_, err = clientfd.Write(buffer[0:nread])
+		if err != nil {
+			if err == io.ErrUnexpectedEOF {
+				logger.Debug("TCP session with mongodb client encounter unexpected EOF: [%v].", err)
+				break
+			}
 			logger.Debug("TCP write to client error: [%v].", err)
 			continue
 		}
