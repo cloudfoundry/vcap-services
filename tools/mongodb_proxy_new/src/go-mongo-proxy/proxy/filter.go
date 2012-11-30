@@ -26,12 +26,17 @@ type ConnectionInfo struct {
 type Filter interface {
 	FilterEnabled() bool
 	PassFilter(op_code int) bool
+	IsDirtyEvent(op_code int) bool
+	EnqueueDirtyEvent()
 	StorageMonitor()
 }
 
 type ProxyFilterImpl struct {
 	// atomic value, use atomic wrapper function to operate on it
 	blocked uint32 // 0 means not block, 1 means block
+
+	// event channel
+	evtchn chan byte // 'd' means dirty event, 's' means shutdown event
 
 	config *FilterConfig
 	mongo  *ConnectionInfo
@@ -40,6 +45,7 @@ type ProxyFilterImpl struct {
 func NewFilter(conf *FilterConfig, conn *ConnectionInfo) *ProxyFilterImpl {
 	return &ProxyFilterImpl{
 		blocked: UNBLOCKED,
+		evtchn:  make(chan byte, 100),
 		config:  conf,
 		mongo:   conn}
 }
@@ -53,11 +59,57 @@ func (filter *ProxyFilterImpl) PassFilter(op_code int) bool {
 		atomic.LoadUint32(&filter.blocked) == UNBLOCKED
 }
 
+func (filter *ProxyFilterImpl) IsDirtyEvent(op_code int) bool {
+	return op_code == OP_UPDATE || op_code == OP_INSERT ||
+		op_code == OP_DELETE
+}
+
+func (filter *ProxyFilterImpl) EnqueueDirtyEvent() {
+	filter.evtchn <- 'd'
+}
+
 func (filter *ProxyFilterImpl) StorageMonitor() {
+	go filter.MonitorQuotaDataSize()
 	go filter.MonitorQuotaFiles()
 }
 
 func (filter *ProxyFilterImpl) MonitorQuotaDataSize() {
+	dbhost := filter.mongo.HOST
+	port := filter.mongo.PORT
+	dbname := filter.mongo.DBNAME
+	user := filter.mongo.USER
+	pass := filter.mongo.PASS
+	quota_data_size := filter.config.QUOTA_DATA_SIZE
+
+	var size float64
+	for {
+		event := <-filter.evtchn
+		if event != 'd' {
+			break
+		}
+
+		if err := startMongoSession(dbhost, port); err != nil {
+			logger.Error("Failed to connect to %s:%s, [%s].", dbhost, port, err)
+			goto Error
+		}
+
+		if !readMongodbSize(dbname, user, pass, &size) {
+			logger.Error("Failed to read database '%s' size.", dbname)
+			goto Error
+		}
+
+		if size >= float64(quota_data_size*1024*1024) {
+			atomic.StoreUint32(&filter.blocked, BLOCKED)
+		} else {
+			atomic.CompareAndSwapUint32(&filter.blocked, BLOCKED, UNBLOCKED)
+		}
+
+		continue
+	Error:
+		atomic.StoreUint32(&filter.blocked, BLOCKED)
+	}
+
+	endMongoSession()
 }
 
 func (filter *ProxyFilterImpl) MonitorQuotaFiles() {
