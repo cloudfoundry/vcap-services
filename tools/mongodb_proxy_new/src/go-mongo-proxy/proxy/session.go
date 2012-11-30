@@ -79,6 +79,10 @@ func (session *ProxySessionImpl) ForwardClientMsg() {
 			continue
 		}
 
+		if filter.FilterEnabled() && filter.IsDirtyEvent(current_pkt_op) {
+			filter.EnqueueDirtyEvent()
+		}
+
 		// filter process
 		if filter.FilterEnabled() && !filter.PassFilter(current_pkt_op) {
 			logger.Debug("TCP session with mongodb client is blocked by filter.")
