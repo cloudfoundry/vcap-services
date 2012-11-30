@@ -38,12 +38,8 @@ class VCAP::Services::Marketplace::Gateway < VCAP::Services::Base::Gateway
       end
     end.parse!
 
-    begin
-      @config = parse_gateway_config(config_file)
-    rescue => e
-      puts "Couldn't read config file: #{e}"
-      exit
-    end
+    @config = YAML.load_file(config_file)
+    @config = VCAP.symbolize_keys(@config)
 
     marketplace = @config[:marketplace]
     marketplace_config = YAML.load_file(File.join(File.dirname(config_file), "#{marketplace}.yml"))
