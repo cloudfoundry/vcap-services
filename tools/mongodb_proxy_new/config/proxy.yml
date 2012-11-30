@@ -9,7 +9,7 @@ mongodb:
   user: admin
 
 filter:
-  base_dir: /store/instance/data/
+  base_dir: /mnt/appcloud/data1
   quota_files: 4
   quota_data_size: 240 
   enabled: true
