@@ -118,6 +118,7 @@ def getNodeTestConfig()
     options[:port_range] = parse_property(warden_config, "port_range", Range)
     options[:service_start_timeout] = parse_property(warden_config, "service_start_timeout", Integer, :optional => true, :default => 3)
     options[:filesystem_quota] = parse_property(warden_config, "filesystem_quota", Boolean, :optional => true)
+    options[:tmp_dir] = parse_property(warden_config, "tmp_dir", String, :optional => true, :default => "/tmp")
   else
     options[:ip_route] = "127.0.0.1"
   end

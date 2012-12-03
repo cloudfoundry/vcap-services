@@ -809,6 +809,11 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
   private_class_method :new
 
   class << self
+    def init(options)
+      super(options)
+      @@tmp_dir = options[:tmp_dir]
+    end
+
     def create(port, name, user, password, version)
       raise "Parameter missing" unless port
       provisioned_service          = new
@@ -820,6 +825,7 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
       provisioned_service.version  = version
 
       provisioned_service.prepare_filesystem(@max_disk)
+      FileUtils.mkdir_p(provisioned_service.tmp_dir)
       provisioned_service
     end
   end
@@ -848,6 +854,7 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
     options = super
     options[:start_script] = {:script => start_script, :use_spawn => true}
     options[:service_port] = service_port
+    options[:additional_binds] = [{:src_path => tmp_dir, :dst_path => "/store/mysql_tmp",}]
     options
   end
 
@@ -865,5 +872,13 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
   #directory helper
   def data_dir
     File.join(base_dir, "data")
+  end
+
+  def tmp_dir
+    File.join(@@tmp_dir, self[:name])
+  end
+
+  def util_dirs
+    [tmp_dir]
   end
 end
