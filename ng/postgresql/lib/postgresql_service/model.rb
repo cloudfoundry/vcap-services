@@ -151,13 +151,18 @@ module VCAP
           end
 
           def finish_start?
-            postgresql_quickcheck(
-              ip,
-              @@postgresql_config[version]["user"],
-              @@postgresql_config[version]["pass"],
-              service_port,
-              "postgres"
-            )
+            user, pass, database = %w[user pass database].map{ |ele| @@postgresql_config[version][ele] }
+            conn = postgresql_connect(ip, user, pass, service_port, database)
+            if conn
+              pg_version(conn)
+              true
+            else
+              false
+            end
+          rescue => e
+            false
+          ensure
+            conn.close if conn
           end
 
         end
