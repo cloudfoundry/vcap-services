@@ -50,6 +50,13 @@ class VCAP::Services::Postgresql::Node
     @provision_served = 0
     @binding_served = 0
     @supported_versions = options[:supported_versions]
+
+    # locks
+    @keep_alive_lock = Mutex.new
+    @kill_long_queries_lock = Mutex.new
+    @kill_long_transaction_lock = Mutex.new
+    @enforce_quota_lock = Mutex.new
+
     @use_warden = @options[:use_warden] || false
     if @use_warden
       require "postgresql_service/with_warden"
@@ -196,7 +203,7 @@ class VCAP::Services::Postgresql::Node
                   get_inst_port(provisionedservice)
       )
     rescue => e
-      @logger.error("Fail to provision for #{e}: #{e.backtrace.join('|')}")
+      @logger.error("Fail to provision for #{fmt_error(e)}")
       cleanup(provisionedservice) if provisionedservice
       raise e
     end
@@ -275,7 +282,7 @@ class VCAP::Services::Postgresql::Node
       @binding_served += 1
       return response
     rescue => e
-      @logger.error("Fail to bind for #{e}: #{e.backtrace.join('|')}")
+      @logger.error("Fail to bind for #{fmt_error(e)}")
       delete_database_user(binduser,name) if binduser
       raise e
     end
@@ -326,7 +333,7 @@ class VCAP::Services::Postgresql::Node
       @logger.info("Done creating #{provisionedservice.inspect}. Took #{Time.now - start}.")
       true
     rescue PGError => e
-      @logger.error("Could not create database: #{e}")
+      @logger.error("Could not create database: #{fmt_error(e)}")
       false
     end
   end
@@ -388,12 +395,12 @@ class VCAP::Services::Postgresql::Node
           exe_grant_user_priv(db_connection)
         end
       rescue PGError => e
-        @logger.error("Could not Initialize user privileges: #{e}")
+        @logger.error("Could not Initialize user privileges: #{fmt_error(e)}")
       end
       db_connection.close
       true
     rescue PGError => e
-      @logger.error("Could not create database user: #{e}")
+      @logger.error("Could not create database user: #{fmt_error(e)}")
       false
     end
   end
@@ -418,7 +425,7 @@ class VCAP::Services::Postgresql::Node
         false
       end
     rescue PGError => e
-      @logger.error("Could not delete database: #{e}")
+      @logger.error("Could not delete database: #{fmt_error(e)}")
       false
     end
   end
@@ -474,7 +481,7 @@ class VCAP::Services::Postgresql::Node
     db_connection.close
     true
   rescue PGError => e
-    @logger.error("Could not delete user '#{binduser.user}': #{e}")
+    @logger.error("Could not delete user '#{binduser.user}': #{fmt_error(e)}")
     false
   end
 
@@ -498,7 +505,7 @@ class VCAP::Services::Postgresql::Node
         binding_opts = v["binding_options"]
         v["credentials"] = bind(name, binding_opts, cred)
       rescue => e
-        @logger.error("Error on bind_all_creds #{e}")
+        @logger.error("Error on bind_all_creds #{fmt_error(e)}")
       end
     end
   end
@@ -511,9 +518,9 @@ class VCAP::Services::Postgresql::Node
     default_user = instance.default_user
     raise "No default user for provisioned service #{name}" unless default_user
 
-    host, port, vcap_user, vcap_pass, restore_bin =
-      %w{host port user pass restore_bin}.map { |opt| postgresql_config(instance)[opt] }
-    reset_db(host, port, vcap_user, vcap_pass, name, instance)
+    host, port, vcap_user, vcap_pass, database, restore_bin =
+      %w{host port user pass database restore_bin}.map { |opt| postgresql_config(instance)[opt] }
+    reset_db(host, port, vcap_user, vcap_pass, database, instance)
 
     user =  default_user[:user]
     passwd = default_user[:password]
@@ -524,7 +531,7 @@ class VCAP::Services::Postgresql::Node
     o, e, s = exe_cmd(cmd)
     s.exitstatus == 0
   rescue => e
-    @logger.error("Error during restore: #{e}")
+    @logger.error("Error during restore: #{fmt_error(e)}")
     nil
   ensure
     FileUtils.rm_rf("#{path}.archive_list")
@@ -542,7 +549,7 @@ class VCAP::Services::Postgresql::Node
     global_connection(instance).query("select pg_terminate_backend(procpid) from pg_stat_activity where datname = '#{name}'")
     true
   rescue => e
-    @logger.error("Error during disable_instance #{e}")
+    @logger.error("Error during disable_instance #{fmt_error(e)}")
     nil
   end
 
@@ -573,7 +580,7 @@ class VCAP::Services::Postgresql::Node
 
     return true
   rescue => e
-    @logger.error("Error during dump_instance #{e}")
+    @logger.error("Error during dump_instance #{fmt_error(e)}")
     nil
   end
 
@@ -608,7 +615,7 @@ class VCAP::Services::Postgresql::Node
     o, e, s = exe_cmd(cmd)
     return s.exitstatus == 0
   rescue => e
-    @logger.error("Error during import_instance #{e}")
+    @logger.error("Error during import_instance #{fmt_error(e)}")
     nil
   ensure
     FileUtils.rm_rf("#{import_file}.archive_list")
@@ -624,7 +631,7 @@ class VCAP::Services::Postgresql::Node
     unblock_user_from_db(db_connection, instance)
     true
   rescue => e
-    @logger.error("Error during enable_instance #{e}")
+    @logger.error("Error during enable_instance #{fmt_error(e)}")
     nil
   end
 
@@ -646,7 +653,7 @@ class VCAP::Services::Postgresql::Node
     end
     [prov_cred, binding_creds_hash]
   rescue => e
-    @logger.error("Error during update_instance #{e}")
+    @logger.error("Error during update_instance #{fmt_error(e)}")
     []
   end
 
@@ -669,7 +676,7 @@ class VCAP::Services::Postgresql::Node
         varz[:instances][instance.name.to_sym] = get_status(instance)
       end
     rescue => e
-      @logger.error("Error get instance list: #{e}")
+      @logger.error("Error get instance list: #{fmt_error(e)}")
     end
     varz
   rescue => e
@@ -685,8 +692,10 @@ class VCAP::Services::Postgresql::Node
         @logger.warn('instance without binding?!')
         res = 'fail'
       else
-        conn = PGconn.connect(host, port, nil, nil, name,
-          instance.pgbindusers[0].user, instance.pgbindusers[0].password)
+        user = instance.pgbindusers[0].user
+        password = instance.pgbindusers[0].password
+        conn = postgresql_connect(host, user, password, port, name, :quick => true)
+        return 'fail' unless conn
         conn.query('select current_timestamp')
       end
     rescue => e
@@ -703,3 +712,4 @@ class VCAP::Services::Postgresql::Node
   end
 
 end
+
