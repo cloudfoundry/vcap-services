@@ -151,13 +151,20 @@ module VCAP
           end
 
           def finish_start?
-            postgresql_quickcheck(
-              ip,
-              @@postgresql_config[version]["user"],
-              @@postgresql_config[version]["pass"],
-              service_port,
-              "postgres"
-            )
+            user = @@postgresql_config[version]["user"]
+            pass = @@postgresql_config[version]["pass"]
+            db   = @@postgresql_config[version]["database"]
+            conn = postgresql_connect(ip, user, pass, service_port, db)
+            if conn
+              pg_version(conn)
+              true
+            else
+              false
+            end
+          rescue => e
+            false
+          ensure
+            conn.close if conn
           end
 
         end

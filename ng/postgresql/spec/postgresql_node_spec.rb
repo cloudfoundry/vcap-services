@@ -717,6 +717,8 @@ describe "Postgresql node normal cases" do
       opts[:not_start_instances] = true if @opts[:use_warden]
       # add extra 0.5MB(524288B) to the size of a new intialized instance to calculate max_db_size
       # so inserting 1MB(1000000B) data must trigger the quota enforcement
+      # sleep enough time to get the steady size value
+      sleep 1
       opts[:max_db_size] = (@node.db_size(@db_instance) + 524288)/1024.0/1024.0
       node = VCAP::Services::Postgresql::Node.new(opts)
       EM.add_timer(1.1) do
@@ -1143,6 +1145,7 @@ describe "Postgresql node normal cases" do
       end
       # add extra 0.5MB(524288B) to the size of a new intialized instance to calculate max_db_size
       # so inserting 1MB(1000000B) data must trigger the quota enforcement
+      sleep 1
       opts[:max_db_size] = (@node.db_size(@db_instance) + 524288)/1024.0/1024.0
 
       node = VCAP::Services::Postgresql::Node.new(opts)
