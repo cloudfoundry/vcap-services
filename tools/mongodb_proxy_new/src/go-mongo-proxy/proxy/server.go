@@ -3,6 +3,10 @@ package proxy
 import (
 	"flag"
 	"net"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 )
 import l4g "github.com/moovweb/log4go"
 
@@ -21,6 +25,7 @@ type ProxyConfig struct {
 }
 
 var logger l4g.Logger
+var sighnd chan os.Signal
 
 func startProxyServer(conf *ProxyConfig) error {
 	proxyaddrstr := flag.String("proxy listen address", conf.HOST+":"+conf.PORT, "host:port")
@@ -46,14 +51,28 @@ func startProxyServer(conf *ProxyConfig) error {
 
 	filter := NewFilter(&conf.FILTER, &conf.MONGODB)
 	if filter.FilterEnabled() {
-		go filter.StorageMonitor()
+		go filter.StartStorageMonitor()
 	}
+
+	manager := NewSessionManager()
+
+	setupSignal()
 
 	logger.Info("Start proxy server.")
 
 	for {
-		clientconn, err := proxyfd.AcceptTCP()
-		if err != nil {
+		select {
+		case <-sighnd:
+			goto Exit
+		default:
+		}
+
+		// Golang does not provide 'Timeout' IO function, so we
+		// make it on our own.
+		clientconn, err := asyncAcceptTCP(proxyfd, time.Second)
+		if err == ErrTimeout {
+			continue
+		} else if err != nil {
 			logger.Error("TCP server accept error: [%v].", err)
 			continue
 		}
@@ -65,12 +84,53 @@ func startProxyServer(conf *ProxyConfig) error {
 			continue
 		}
 
-		session := NewSession(clientconn, serverconn, filter)
+		session := manager.NewSession(clientconn, serverconn, filter)
 		go session.Process()
 	}
 
+Exit:
 	logger.Info("Stop proxy server.")
+	manager.WaitAllFinish()
+	filter.WaitForFinish()
 	return nil
+}
+
+type tcpconn struct {
+	err error
+	fd  *net.TCPConn
+}
+
+var asynctcpconn chan tcpconn
+
+func asyncAcceptTCP(serverfd *net.TCPListener, timeout time.Duration) (*net.TCPConn, error) {
+	t := time.NewTimer(timeout)
+	defer t.Stop()
+
+	if asynctcpconn == nil {
+		asynctcpconn = make(chan tcpconn, 1)
+		go func() {
+			connfd, err := serverfd.AcceptTCP()
+			if err != nil {
+				asynctcpconn <- tcpconn{err, nil}
+			} else {
+				asynctcpconn <- tcpconn{nil, connfd}
+			}
+		}()
+	}
+
+	select {
+	case p := <-asynctcpconn:
+		asynctcpconn = nil
+		return p.fd, p.err
+	case <-t.C:
+		return nil, ErrTimeout
+	}
+	panic("Oops, unreachable")
+}
+
+func setupSignal() {
+	sighnd = make(chan os.Signal, 1)
+	signal.Notify(sighnd, syscall.SIGTERM)
 }
 
 func Start(conf *ProxyConfig, log l4g.Logger) error {
