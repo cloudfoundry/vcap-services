@@ -1,8 +1,10 @@
 package proxy
 
 import (
+	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 )
 
 const BLOCKED = 1
@@ -28,26 +30,38 @@ type Filter interface {
 	PassFilter(op_code int) bool
 	IsDirtyEvent(op_code int) bool
 	EnqueueDirtyEvent()
-	StorageMonitor()
+	StartStorageMonitor()
+	WaitForFinish()
 }
 
 type ProxyFilterImpl struct {
 	// atomic value, use atomic wrapper function to operate on it
-	blocked uint32 // 0 means not block, 1 means block
+	mablocked uint32 // 0 means not block, 1 means block
+	mfblocked uint32 // 0 means not block, 1 means block
 
 	// event channel
-	evtchn chan byte // 'd' means dirty event, 's' means shutdown event
+	evtchn1 chan byte // 'd' means dirty event, 's' means shutdown event
+	evtchn2 chan byte // 's' means shutdown event
 
 	config *FilterConfig
 	mongo  *ConnectionInfo
+
+	// goroutine wait channel
+	lock    sync.Mutex
+	running uint32
+	wait    chan byte
 }
 
 func NewFilter(conf *FilterConfig, conn *ConnectionInfo) *ProxyFilterImpl {
 	return &ProxyFilterImpl{
-		blocked: UNBLOCKED,
-		evtchn:  make(chan byte, 100),
-		config:  conf,
-		mongo:   conn}
+		mablocked: UNBLOCKED,
+		mfblocked: UNBLOCKED,
+		evtchn1:   make(chan byte, 100),
+		evtchn2:   make(chan byte, 1),
+		config:    conf,
+		mongo:     conn,
+		running:   0,
+		wait:      make(chan byte, 1)}
 }
 
 func (filter *ProxyFilterImpl) FilterEnabled() bool {
@@ -55,8 +69,13 @@ func (filter *ProxyFilterImpl) FilterEnabled() bool {
 }
 
 func (filter *ProxyFilterImpl) PassFilter(op_code int) bool {
-	return op_code != OP_UPDATE && op_code != OP_INSERT ||
-		atomic.LoadUint32(&filter.blocked) == UNBLOCKED
+	// When we read state of 'mfblockeded', the state of 'mablocked' may
+	// change from 'UNBLOCKED' to 'BLOCKED', so, our implementation only
+	// achieves soft limit not hard limit. Since we have over quota storage
+	// space settings, this is not a big issue.
+	return (op_code != OP_UPDATE && op_code != OP_INSERT) ||
+		(atomic.LoadUint32(&filter.mablocked) == UNBLOCKED &&
+			atomic.LoadUint32(&filter.mfblocked) == UNBLOCKED)
 }
 
 func (filter *ProxyFilterImpl) IsDirtyEvent(op_code int) bool {
@@ -65,12 +84,20 @@ func (filter *ProxyFilterImpl) IsDirtyEvent(op_code int) bool {
 }
 
 func (filter *ProxyFilterImpl) EnqueueDirtyEvent() {
-	filter.evtchn <- 'd'
+	filter.evtchn1 <- 'd'
 }
 
-func (filter *ProxyFilterImpl) StorageMonitor() {
+func (filter *ProxyFilterImpl) StartStorageMonitor() {
 	go filter.MonitorQuotaDataSize()
 	go filter.MonitorQuotaFiles()
+}
+
+func (filter *ProxyFilterImpl) WaitForFinish() {
+	if filter.config.ENABLED {
+		filter.evtchn1 <- 's'
+		filter.evtchn2 <- 's'
+		<-filter.wait
+	}
 }
 
 func (filter *ProxyFilterImpl) MonitorQuotaDataSize() {
@@ -81,10 +108,14 @@ func (filter *ProxyFilterImpl) MonitorQuotaDataSize() {
 	pass := filter.mongo.PASS
 	quota_data_size := filter.config.QUOTA_DATA_SIZE
 
+	filter.lock.Lock()
+	filter.running++
+	filter.lock.Unlock()
+
 	var size float64
 	for {
-		event := <-filter.evtchn
-		if event != 'd' {
+		event := <-filter.evtchn1
+		if event == 's' {
 			break
 		}
 
@@ -98,18 +129,25 @@ func (filter *ProxyFilterImpl) MonitorQuotaDataSize() {
 			goto Error
 		}
 
-		if size >= float64(quota_data_size*1024*1024) {
-			atomic.StoreUint32(&filter.blocked, BLOCKED)
+		if size >= float64(quota_data_size)*float64(1024*1024) {
+			atomic.StoreUint32(&filter.mablocked, BLOCKED)
 		} else {
-			atomic.CompareAndSwapUint32(&filter.blocked, BLOCKED, UNBLOCKED)
+			atomic.CompareAndSwapUint32(&filter.mablocked, BLOCKED, UNBLOCKED)
 		}
 
 		continue
 	Error:
-		atomic.StoreUint32(&filter.blocked, BLOCKED)
+		atomic.StoreUint32(&filter.mablocked, BLOCKED)
 	}
 
 	endMongoSession()
+
+	filter.lock.Lock()
+	filter.running--
+	if filter.running == 0 {
+		filter.wait <- 's'
+	}
+	filter.lock.Unlock()
 }
 
 func (filter *ProxyFilterImpl) MonitorQuotaFiles() {
@@ -122,6 +160,10 @@ func (filter *ProxyFilterImpl) MonitorQuotaFiles() {
 	base_dir := filter.config.BASE_DIR
 	quota_files := filter.config.QUOTA_FILES
 
+	filter.lock.Lock()
+	filter.running++
+	filter.lock.Unlock()
+
 	filecount := 0
 	filecount = iterateDatafile(dbname, base_dir, dbfiles)
 	if filecount < 0 {
@@ -132,7 +174,7 @@ func (filter *ProxyFilterImpl) MonitorQuotaFiles() {
 	logger.Info("At the begining time we have disk files: [%d].", filecount)
 	if filecount > int(quota_files) {
 		logger.Critical("Disk files exceeds quota.")
-		atomic.StoreUint32(&filter.blocked, BLOCKED)
+		atomic.StoreUint32(&filter.mfblocked, BLOCKED)
 	}
 
 	// Golang does not recommend to invoke system call directly, but
@@ -152,25 +194,32 @@ func (filter *ProxyFilterImpl) MonitorQuotaFiles() {
 	}
 
 	for {
-		nread, err := syscall.Read(fd, buffer)
-		if nread < 0 {
-			if err == syscall.EINTR {
+		select {
+		case event := <-filter.evtchn2:
+			if event == 's' {
 				break
-			} else {
-				logger.Error("Failed to read inotify event: [%s].", err)
 			}
+		default:
+		}
+
+		nread, err := asyncRead(syscall.Read, fd, buffer, time.Second)
+		if err != nil {
+			if err == ErrTimeout {
+				continue
+			}
+			logger.Error("Failed to read inotify event: [%s].", err)
 		} else {
 			err = parseInotifyEvent(dbname, buffer[0:nread], &filecount, dbfiles)
 			if err != nil {
 				logger.Error("Failed to parse inotify event.")
-				atomic.StoreUint32(&filter.blocked, BLOCKED)
+				atomic.StoreUint32(&filter.mfblocked, BLOCKED)
 			} else {
-				logger.Debug("Current db disk file number: [%d].", filecount)
+				logger.Info("Current db disk file number: [%d].", filecount)
 				if filecount > int(quota_files) {
 					logger.Critical("Disk files exceeds quota.")
-					atomic.StoreUint32(&filter.blocked, BLOCKED)
+					atomic.StoreUint32(&filter.mfblocked, BLOCKED)
 				} else {
-					atomic.CompareAndSwapUint32(&filter.blocked, BLOCKED, UNBLOCKED)
+					atomic.CompareAndSwapUint32(&filter.mfblocked, BLOCKED, UNBLOCKED)
 				}
 			}
 		}
@@ -178,8 +227,14 @@ func (filter *ProxyFilterImpl) MonitorQuotaFiles() {
 
 	syscall.InotifyRmWatch(fd, uint32(wd))
 	syscall.Close(fd)
-	return
 
 Error:
-	atomic.StoreUint32(&filter.blocked, BLOCKED)
+	atomic.StoreUint32(&filter.mfblocked, BLOCKED)
+
+	filter.lock.Lock()
+	filter.running--
+	if filter.running == 0 {
+		filter.wait <- 's'
+	}
+	filter.lock.Unlock()
 }
