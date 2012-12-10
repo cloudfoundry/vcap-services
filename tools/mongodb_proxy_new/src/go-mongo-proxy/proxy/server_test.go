@@ -70,7 +70,7 @@ func TestMongodbDataOps(t *testing.T) {
 	} else {
 		defer session.Close()
 
-		db := session.DB("admin")
+		db := session.DB(config.MONGODB.DBNAME)
 		err = db.Login(config.MONGODB.USER, config.MONGODB.PASS)
 		if err != nil {
 			t.Error("Failed to login database admin as %s:%s: [%s].",
