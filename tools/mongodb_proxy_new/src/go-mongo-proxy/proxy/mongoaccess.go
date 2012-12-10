@@ -31,8 +31,10 @@ func startMongoSession(dbhost, port string) error {
 }
 
 func endMongoSession() {
-	session.Close()
-	session = nil
+	if session != nil {
+		session.Close()
+		session = nil
+	}
 }
 
 // should call 'startMongoSession' before this method
