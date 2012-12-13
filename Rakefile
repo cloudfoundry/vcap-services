@@ -87,6 +87,7 @@ namespace "bundler" do
 
   desc "Dry run update"
   task :update_dry, :oref, :nref, :catalog, :pattern do |t, args|
+    puts args.inspect
     dirs = dirs_to_run(args[:catalog], args[:pattern])
     exec_in_svc_dir(dirs) { |_| sh "sed \"s/#{args[:oref]}/#{args[:nref]}/g\" Gemfile" }
   end
