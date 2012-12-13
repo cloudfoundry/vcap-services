@@ -11,7 +11,6 @@ import (
 	"regexp"
 	"strconv"
 	"sync/atomic"
-	"syscall"
 )
 
 const OP_UNKNOWN = 0
@@ -32,9 +31,8 @@ const BLOCKED = 1
 const UNBLOCKED = 0
 
 type FilterAction struct {
-	base_dir        string // mongodb data base dir
-	quota_files     uint32 // quota file number
-	dbfiles         map[string]int
+	base_dir        string    // mongodb data base dir
+	quota_files     uint32    // quota file number
 	quota_data_size uint32    // megabytes
 	enabled         bool      // enable or not
 	dirty           chan bool // indicate whether write operation received
@@ -55,7 +53,6 @@ func NewIOFilterProtocol(conf *ProxyConfig) *IOFilterProtocol {
 		action: FilterAction{
 			base_dir:        conf.FILTER.BASE_DIR,
 			quota_files:     conf.FILTER.QUOTA_FILES,
-			dbfiles:         make(map[string]int),
 			quota_data_size: conf.FILTER.QUOTA_DATA_SIZE,
 			enabled:         conf.FILTER.ENABLED,
 			dirty:           make(chan bool, 100),
@@ -111,84 +108,23 @@ func (f *IOFilterProtocol) HandleMsgHeader(stream []byte) (message_length,
 	return message_length, op_code
 }
 
-func (f *IOFilterProtocol) MonitQuotaFiles() {
-	var buf []byte
-	var fd, wd int
-
-	conn_info := &f.conn_info
-	action := &f.action
-
-	base_dir := action.base_dir
-	quota_files := action.quota_files
-	filecount := 0
-
-	expr := "^" + conn_info.DBNAME + "\\.[0-9]+"
-	re, err := regexp.Compile(expr)
-	if err != nil {
-		logger.Error("Failed to compile regexp error: [%s].", err)
-		goto Error
-	}
-
-	filecount = iterate_dbfile(action, base_dir, re)
-	logger.Info("At the begining time we have disk files: [%d].", filecount)
-	if uint32(filecount) > quota_files {
-		logger.Critical("Disk files exceeds quota.")
-		atomic.StoreUint32(&action.blocked, BLOCKED)
-	}
-
-	fd, err = syscall.InotifyInit()
-	if err != nil {
-		logger.Error("Failed to call InotifyInit: [%s].", err)
-		goto Error
-	}
-
-	wd, err = syscall.InotifyAddWatch(fd, base_dir, syscall.IN_CREATE|syscall.IN_OPEN|
-		syscall.IN_MOVED_TO|syscall.IN_DELETE)
-	if err != nil {
-		logger.Error("Failed to call InotifyAddWatch: [%s].", err)
-		syscall.Close(fd)
-		goto Error
-	}
-
-	buf = make([]byte, 256)
-	for {
-		nread, err := syscall.Read(fd, buf)
-		if nread < 0 {
-			if err == syscall.EINTR {
-				break
-			} else {
-				logger.Error("Failed to read inotify event: [%s].", err)
-			}
-		} else {
-			err = parse_inotify_event(action, buf[0:nread], re, &filecount)
-			if err != nil {
-				logger.Error("Failed to parse inotify event.")
-				atomic.StoreUint32(&action.blocked, BLOCKED)
-			} else {
-				logger.Debug("Current db disk file number: [%d].", filecount)
-				if uint32(filecount) > quota_files {
-					logger.Critical("Disk files exceeds quota.")
-					atomic.StoreUint32(&action.blocked, BLOCKED)
-				} else {
-					atomic.CompareAndSwapUint32(&action.blocked, BLOCKED, UNBLOCKED)
-				}
-			}
-		}
-	}
-
-	syscall.InotifyRmWatch(fd, uint32(wd))
-	syscall.Close(fd)
-	return
-
-Error:
-	atomic.StoreUint32(&action.blocked, BLOCKED)
-}
-
 func (f *IOFilterProtocol) MonitQuotaDataSize() {
 	conn_info := &f.conn_info
 	action := &f.action
 
+	dbname := conn_info.DBNAME
+	base_dir := action.base_dir
+	quota_files := action.quota_files
+
+	dbfiles := make(map[string]int)
+	upperbound := float64(action.quota_data_size) * float64(1024*1024)
+
+	var session *mgo.Session
+	var err error
+
 	var dbsize float64
+	pfilecount := 0
+	nfilecount := 0
 
 	for {
 		select {
@@ -211,15 +147,16 @@ func (f *IOFilterProtocol) MonitQuotaDataSize() {
 		}
 
 	HandleQuotaDataSize:
-		// if 'blocked' flag is set then it indicates that disk file number
-		// exceeds the QuotaFile, then DataSize account is not necessary.
-		if atomic.LoadUint32(&f.action.blocked) == BLOCKED {
-			continue
-		}
 
 		logger.Debug("Recalculate data size after getting message from dirty channel.\n")
 
-		session, err := mgo.Dial(conn_info.HOST + ":" + conn_info.PORT)
+		nfilecount = iterate_dbfile(dbname, base_dir, dbfiles)
+		if nfilecount < 0 {
+			logger.Error("Failed to iterate data files under %s.", base_dir)
+			goto Error
+		}
+
+		session, err = mgo.Dial(conn_info.HOST + ":" + conn_info.PORT)
 		if err != nil {
 			logger.Error("Failed to connect to %s:%s [%s].", conn_info.HOST,
 				conn_info.PORT, err)
@@ -232,15 +169,28 @@ func (f *IOFilterProtocol) MonitQuotaDataSize() {
 		if !read_mongodb_dbsize(f, &dbsize, session) {
 			goto Error
 		}
+		session.Close()
+
+		// disk file last allocation meets following 2 conditions
+		// 1. nfilecount > quota file number
+		// 2. nfilecount > pfilecount
+		if (nfilecount > int(quota_files)) && (nfilecount > pfilecount) {
+			logger.Critical("Last allocation for a new disk file, quota exceeds.")
+			upperbound = dbsize
+		} else if nfilecount < pfilecount {
+			// Only 'repair' can shrink disk files.
+			logger.Info("Repair database is triggered.")
+			upperbound = float64(action.quota_data_size) * float64(1024*1024)
+		}
 
 		logger.Debug("Get current disk occupied size %v.", dbsize)
-		if dbsize >= float64(action.quota_data_size)*float64(1024*1024) {
+		if dbsize >= upperbound {
 			atomic.StoreUint32(&action.blocked, BLOCKED)
 		} else {
 			atomic.CompareAndSwapUint32(&action.blocked, BLOCKED, UNBLOCKED)
 		}
 
-		session.Close()
+		pfilecount = nfilecount
 		continue
 
 	Error:
@@ -300,9 +250,16 @@ func read_mongodb_dbsize(f *IOFilterProtocol, size *float64, session *mgo.Sessio
 /*       Internal Support Routines        */
 /*                                        */
 /******************************************/
-func iterate_dbfile(f *FilterAction, dirpath string, re *regexp.Regexp) int {
+func iterate_dbfile(dbname string, dirpath string, dbfiles map[string]int) int {
 	filecount := 0
-	dbfiles := f.dbfiles
+
+	expr := "^" + dbname + "\\.[0-9]+"
+	re, err := regexp.Compile(expr)
+	if err != nil {
+		logger.Error("Failed to compile regexp error: [%s].", err)
+		return -1
+	}
+
 	visit_file := func(path string, f os.FileInfo, err error) error {
 		if err == nil && !f.IsDir() && re.Find([]byte(f.Name())) != nil {
 			dbfiles[f.Name()] = 1
@@ -312,43 +269,6 @@ func iterate_dbfile(f *FilterAction, dirpath string, re *regexp.Regexp) int {
 	}
 	filepath.Walk(dirpath, visit_file)
 	return filecount
-}
-
-func parse_inotify_event(f *FilterAction, buf []byte, re *regexp.Regexp, filecount *int) error {
-	var event syscall.InotifyEvent
-	var filename string
-
-	index := 0
-	dbfiles := f.dbfiles
-	for index < len(buf) {
-		err := binary.Read(bytes.NewBuffer(buf[0:len(buf)]), binary.LittleEndian, &event)
-		if err != nil {
-			logger.Error("Failed to do binary read inotify event: [%s].", err)
-			return err
-		}
-		start := index + syscall.SizeofInotifyEvent
-		end := start + int(event.Len)
-		filename = string(buf[start:end])
-		if re.Find([]byte(filename)) != nil {
-			logger.Debug("Get filename from inotify event: [%s].", filename)
-			switch event.Mask {
-			case syscall.IN_CREATE:
-				fallthrough
-			case syscall.IN_OPEN:
-				fallthrough
-			case syscall.IN_MOVED_TO:
-				if _, ok := dbfiles[filename]; !ok {
-					*filecount++
-					dbfiles[filename] = 1
-				}
-			case syscall.IN_DELETE:
-				*filecount--
-				delete(dbfiles, filename)
-			}
-		}
-		index = end
-	}
-	return nil
 }
 
 /*

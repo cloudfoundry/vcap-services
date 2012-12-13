@@ -79,7 +79,6 @@ func StartProxyServer(conf *ProxyConfig, proxy_log l4g.Logger) (err error) {
 		goto Error
 	} else {
 		if filter.FilterEnabled() {
-			go filter.MonitQuotaFiles()
 			go filter.MonitQuotaDataSize()
 		}
 	}
