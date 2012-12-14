@@ -175,6 +175,7 @@ module VCAP
           end
         end
 
+        require "mysql_service/mysql_error"
         class ConnectionPool
           attr_reader  :timeout, :size
           include Util
@@ -196,6 +197,7 @@ module VCAP
             @latency_sum = 0
             @queries_served = 1
             @worst_latency = 0
+            @shutting_down = false
             for i in 1..@size do
               @connections << Connection.new(@options)
             end
@@ -246,6 +248,12 @@ module VCAP
 
             timing { yield connection.conn }
             connection.last_active_time = Time.now
+          rescue MysqlError => e
+            if e.error_code == MysqlError::MYSQL_SHUTTING_DOWN[0]
+              @logger.warn("Can't obtain mysql connection: #{e}")
+            else
+              raise e
+            end
           ensure
             release_connection(connection_id) if fresh_connection
           end
@@ -267,8 +275,14 @@ module VCAP
           end
 
           def shutdown
-            close
-            @connections.clear
+            @connections.synchronize do
+              if @checked_out.size == 0
+                close
+                @connections.clear
+              else
+                @shutting_down = true
+              end
+            end
           end
 
           # Check the connction with mysql
@@ -297,6 +311,7 @@ module VCAP
 
           def checkout
             @connections.synchronize do
+              raise MysqlError.new(MysqlError::MYSQL_SHUTTING_DOWN, @options[:host]) if @shutting_down
               loop do
                 if @checked_out.size < @connections.size
                   conn = (@connections - @checked_out).first
@@ -331,6 +346,7 @@ module VCAP
               @checked_out.delete conn
               @cond.signal
             end
+            shutdown if @shutting_down
           end
 
           def current_connection_id
