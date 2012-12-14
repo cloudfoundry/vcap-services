@@ -8,4 +8,5 @@ class VCAP::Services::Mysql::MysqlError<
     MYSQL_LOCAL_DB_ERROR = [31004, HTTP_INTERNAL, 'Mysql node local db error.']
     MYSQL_INVALID_PLAN = [31005, HTTP_INTERNAL, 'Invalid plan %s.']
     MYSQL_BAD_SERIALIZED_DATA = [31007, HTTP_BAD_REQUEST, "File %s can't be verified"]
+    MYSQL_SHUTTING_DOWN = [31008, HTTP_INTERNAL, 'Mysql server at %s is shutting down']
 end
