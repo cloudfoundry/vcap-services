@@ -23,7 +23,7 @@ service_bin_dir:
   "2.2": /usr/bin
   "2.4": /usr/bin
   "2.6": /usr/bin
-service_script_dir: /usr/bin
+service_common_dir: /var/vcap/store/common
 command_rename_prefix: protect-command-prefix
 max_clients: 500
 # fqdn_hosts: false
