@@ -72,9 +72,3 @@ def make_logger()
   logger.level = Logger::DEBUG
   logger
 end
-
-def load_fixture(filename, resp = '{}')
-  File.read("#{File.dirname(__FILE__)}/fixtures/#{filename}") rescue resp
-end
-
-
