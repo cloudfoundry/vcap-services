@@ -66,7 +66,12 @@ class VCAP::Services::Postgresql::Backup < VCAP::Services::Base::Backup
     if use_warden
       dbs = service_class.all
     else
-      conn = PGconn.connect(opts[:host], opts[:port].to_i, nil, nil, opts[:database], opts[:super_user], opts[:super_passwd])
+      conn = VCAP::Services::Postgresql::Util::PGDBconn.connect(
+        :host => opts[:host],
+        :port => opts[:port].to_i,
+        :dbname => opts[:database],
+        :user => opts[:super_user],
+        :password => opts[:super_passwd])
       result = conn.query("select * from pg_database;")
       dbs = []
       result.each {|db| dbs << db['datname'] }
