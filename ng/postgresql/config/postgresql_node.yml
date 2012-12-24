@@ -15,7 +15,7 @@ max_db_size: 30
 max_long_query: 3
 max_long_tx: 30
 max_db_conns: 20
-use_warden: false
+use_warden: true
 warden:
   port_range:
     first: 25001
@@ -37,8 +37,16 @@ postgresql:
     database: postgres
     restore_bin: pg_restore
     dump_bin: pg_dump
-supported_versions: ['9.0']
-default_version: '9.0'
+  '9.1':
+    host: 127.0.0.1
+    port: 5433
+    user: vcap
+    pass: vcap
+    database: postgres
+    restore_bin: /var/vcap/packages/postgresql91/bin/pg_restore
+    dump_bin: /var/vcap/packages/postgresql91/bin/pg_dump
+supported_versions: ['9.1']
+default_version: '9.1'
 
 # z_interval: 30
 # fqdn_hosts: false
