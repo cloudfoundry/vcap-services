@@ -246,7 +246,7 @@ class VCAP::Services::Redis::Node
       stored_service.password,
       db_file)
     instance.run
-    raise RedisError.new(RedisError::REDIS_START_INSTANCE_TIMEOUT, instance.name) if wait_service_start(instance) == false
+    raise RedisError.new(RedisError::REDIS_START_INSTANCE_TIMEOUT, instance.name) if instance.wait_service_start == false
 
     true
   rescue => e
@@ -395,7 +395,7 @@ class VCAP::Services::Redis::Node::ProvisionedService
 
   def start_options
     options = super
-    options[:start_script] = {:script => "#{service_script} start #{base_dir} #{log_dir} #{bin_dir}", :use_spawn => true}
+    options[:start_script] = {:script => "#{service_script} start #{base_dir} #{log_dir} #{common_dir} #{bin_dir}", :use_spawn => true}
     options
   end
 

@@ -183,6 +183,7 @@ describe "Postgresql node normal cases" do
       @test_dbs[db] = []
       @node.dump_instance(db, [], '/tmp')
       @node.unprovision(db['name'], [])
+      sleep 1 if @opts[:use_warden]
       @node.import_instance(db, {}, '/tmp', @default_plan).should == true
       conn = connect_to_postgresql(db)
       expect { conn.query('select 1') }.should_not raise_error
@@ -502,7 +503,7 @@ describe "Postgresql node normal cases" do
         bind_conn.query("begin")
         bind_conn.query("select * from c for update")
         EM.add_timer(opts[:max_long_tx] * 3) {
-          expect { conn.query("select * from c for update") }.should raise_error
+          expect { bind_conn.query("select * from c for update") }.should raise_error
           bind_conn.close if bind_conn
           EM.stop
         }
@@ -661,7 +662,7 @@ describe "Postgresql node normal cases" do
   end
 
   it "should evict page cache of loopback image files" do
-    pending "You don't use warden, won't run this case." unless @opts[:use_warden] && @opts[:filesystem_quota]
+    pending "You don't use warden or filesystem_quota, won't run this case." unless @opts[:use_warden] && @opts[:filesystem_quota]
     node = nil
     EM.run do
       opts = @opts.dup
@@ -717,6 +718,8 @@ describe "Postgresql node normal cases" do
       opts[:not_start_instances] = true if @opts[:use_warden]
       # add extra 0.5MB(524288B) to the size of a new intialized instance to calculate max_db_size
       # so inserting 1MB(1000000B) data must trigger the quota enforcement
+      # sleep enough time to get the steady size value
+      sleep 1
       opts[:max_db_size] = (@node.db_size(@db_instance) + 524288)/1024.0/1024.0
       node = VCAP::Services::Postgresql::Node.new(opts)
       EM.add_timer(1.1) do
@@ -1143,6 +1146,7 @@ describe "Postgresql node normal cases" do
       end
       # add extra 0.5MB(524288B) to the size of a new intialized instance to calculate max_db_size
       # so inserting 1MB(1000000B) data must trigger the quota enforcement
+      sleep 1
       opts[:max_db_size] = (@node.db_size(@db_instance) + 524288)/1024.0/1024.0
 
       node = VCAP::Services::Postgresql::Node.new(opts)
@@ -1285,14 +1289,19 @@ describe "Postgresql node special cases" do
   it "should keep alive" do
     node = nil
     opts = getNodeTestConfig
-    pending "Use warden, won't run this case." if opts[:use_warden]
     EM.run do
       node = VCAP::Services::Postgresql::Node.new(opts)
-      sleep 2
       EM.add_timer(0.1) {EM.stop}
     end
-    node.fetch_global_connection(@default_version).close
+    db = node.provision(@default_plan, nil, @default_version)
+    db_instance = node.pgProvisionedService.get(db['name'])
+    node.get_status(db_instance).should == 'ok'
+    expect { node.global_connection(db_instance).query("select current_timestamp") }.should_not raise_error
+    node.global_connection(db_instance).close
+    node.get_status(db_instance).should == 'ok'
+    expect { node.global_connection(db_instance).query("select current_timestamp") }.should raise_error
     node.postgresql_keep_alive
-    node.node_ready?.should == true
+    node.get_status(db_instance).should == 'ok'
+    expect {node.global_connection(db_instance).query("select current_timestamp") }.should_not raise_error
   end
 end

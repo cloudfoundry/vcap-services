@@ -82,6 +82,7 @@ def getNodeTestConfig()
     :use_warden => parse_property(config, "use_warden", Boolean, :optional => true, :default => false),
     :supported_versions => parse_property(config, "supported_versions", Array),
     :default_version => parse_property(config, "default_version", String),
+    :disabled_file => parse_property(config, "disabled_file", String, :optional => true, :default => "/var/vcap/stor    e/DISABLED"),
   }
   if options[:use_warden]
     warden_config = parse_property(config, "warden", Hash, :optional => true)
@@ -91,6 +92,9 @@ def getNodeTestConfig()
     options[:image_dir] = parse_property(warden_config, "image_dir", String)
     options[:filesystem_quota] = parse_property(warden_config, "filesystem_quota", Boolean, :optional => true)
     options[:service_start_timeout] = parse_property(warden_config, "service_start_timeout", Integer, :optional => true, :default => 3)
+    options[:service_log_dir] = parse_property(warden_config, "service_log_dir", String)
+    options[:service_bin_dir] = parse_property(warden_config, "service_bin_dir", Hash, :optional => true)
+    options[:service_common_dir] = parse_property(warden_config, "service_common_dir", String, :optional => true, :default => "/var/vcap/store/postgresql_common")
   else
     options[:ip_route] = "127.0.0.1"
   end

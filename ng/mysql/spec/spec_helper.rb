@@ -52,7 +52,7 @@ class ::TrueClass; include Boolean; end
 class ::FalseClass; include Boolean; end
 
 def getLogger()
-  logger = Logger.new( STDOUT)
+  logger = Logger.new(STDOUT)
   logger.level = Logger::ERROR
   return logger
 end
@@ -102,6 +102,7 @@ def getNodeTestConfig()
     :ip_route           => parse_property(config, "ip_route", String, :optional => true),
     :use_warden         => parse_property(config, "use_warden", Boolean),
     :supported_versions => parse_property(config, "supported_versions", Array),
+    :default_version    => parse_property(config, "default_version", String),
 
     # service instance related configs
     :mysql                   => parse_property(config, "mysql", Hash),
@@ -122,9 +123,8 @@ def getNodeTestConfig()
     warden_config = parse_property(config, "warden", Hash, :optional => true)
 
     options[:service_log_dir]    = File.join(spec_tmp_dir, "log")
-    options[:service_script_dir] = parse_property(warden_config, "service_script_dir", String)
-    options[:service_conf_dir]   = parse_property(warden_config, "service_conf_dir", String)
     options[:service_bin_dir]    = parse_property(warden_config, "service_bin_dir", Hash)
+    options[:service_common_dir] = parse_property(warden_config, "service_common_dir", String)
 
     options[:port_range] = parse_property(warden_config, "port_range", Range)
     options[:service_start_timeout] = parse_property(warden_config, "service_start_timeout", Integer, :optional => true, :default => 3)
