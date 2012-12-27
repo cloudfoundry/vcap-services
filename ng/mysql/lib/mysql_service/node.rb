@@ -764,6 +764,32 @@ class VCAP::Services::Mysql::Node
       end
     end
   end
+
+  def each_connection_with_port
+    each_connection_with_identifier { |conn, identifier| yield conn, extract_attr(identifier, :port) }
+  end
+
+  def each_connection_with_key
+    each_connection_with_identifier { |conn, identifier| yield conn, extract_attr(identifier, :key) }
+  end
+
+  def each_pool
+    each_pool_with_identifier { |conn_pool, identifier| yield conn_pool }
+  end
+
+  def each_pool_with_key
+    each_pool_with_identifier { |conn_pool, identifier| yield conn_pool, extract_attr(identifier, :key) }
+  end
+
+  def each_connection_with_identifier
+    each_pool_with_identifier do |conn_pool, identifier|
+      begin
+        conn_pool.with_connection { |conn| yield conn, identifier }
+      rescue => e
+        @logger.warn("with_connection failed: #{e}")
+      end
+    end
+  end
 end
 
 class VCAP::Services::Mysql::Node::ProvisionedService
