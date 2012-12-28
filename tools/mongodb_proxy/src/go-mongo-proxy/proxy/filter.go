@@ -189,6 +189,11 @@ func (f *IOFilterProtocol) MonitQuotaDataSize() {
 	action := &f.action
 
 	var dbsize float64
+	var session *mgo.Session
+	var err error
+
+	dbsize = 0.0
+	session = nil
 
 	for {
 		select {
@@ -219,12 +224,15 @@ func (f *IOFilterProtocol) MonitQuotaDataSize() {
 
 		logger.Debug("Recalculate data size after getting message from dirty channel.\n")
 
-		session, err := mgo.Dial(conn_info.HOST + ":" + conn_info.PORT)
-		if err != nil {
-			logger.Error("Failed to connect to %s:%s [%s].", conn_info.HOST,
-				conn_info.PORT, err)
-			session = nil
-			goto Error
+		if session == nil {
+			// singleton instance
+			session, err = mgo.Dial(conn_info.HOST + ":" + conn_info.PORT)
+			if err != nil {
+				logger.Error("Failed to connect to %s:%s [%s].", conn_info.HOST,
+					conn_info.PORT, err)
+				session = nil
+				goto Error
+			}
 		}
 
 		dbsize = 0.0
@@ -240,12 +248,12 @@ func (f *IOFilterProtocol) MonitQuotaDataSize() {
 			atomic.CompareAndSwapUint32(&action.blocked, BLOCKED, UNBLOCKED)
 		}
 
-		session.Close()
 		continue
 
 	Error:
 		if session != nil {
 			session.Close()
+			session = nil
 		}
 		atomic.StoreUint32(&action.blocked, BLOCKED)
 	}
