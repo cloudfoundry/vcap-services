@@ -23,6 +23,7 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
     property :version,     String,   :required => true
     property :credentials, Json,     :required => true
     property :acls,        Json
+    property :provider,    String
   end
 
   REQ_OPTS      = %w(mbus external_uri token cloud_controller_uri).map {|o| o.to_sym}
@@ -174,7 +175,7 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
 
   def advertise_saved_services(active=true)
     BrokeredService.all.each do |bsvc|
-      req = VCAP::Services::Api::ServiceOfferingRequest.new({
+      msg = {
         :label                => bsvc.label,
         :active               => active,
         :acls                 => bsvc.acls,
@@ -183,7 +184,9 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
         :tags                 => [],
         :supported_versions   => [bsvc.version],
         :version_aliases      => {:current => bsvc.version},
-      }).extract
+      }
+      msg[:provider] = bsvc.provider if bsvc.provider
+      req = VCAP::Services::Api::ServiceOfferingRequest.new(msg).extract
       advertise_brokered_service_to_cc(req)
     end
   end
@@ -308,7 +311,7 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
         svc = {}
         name, version = VCAP::Services::Api::Util.parse_label(label)
 
-        svc = VCAP::Services::Api::ServiceOfferingRequest.new({
+        msg = {
           :label                => "#{name}_#{opt[:name]}-#{version}",
           :active               => true,
           :description          => "#{des} (option '#{opt[:name]}')",
@@ -318,7 +321,9 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
           :tags                 => [],
           :supported_versions   => [version],
           :version_aliases      => {:current => version},
-        }).extract
+        }
+        msg[:provider] = opt[:provider] if opt[:provider]
+        svc = VCAP::Services::Api::ServiceOfferingRequest.new(msg).extract
 
         # update or create local database entry
         bsvc = BrokeredService.get(svc[:label])
@@ -330,6 +335,7 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
         end
         bsvc.credentials = opt[:credentials]
         bsvc.acls = opt[:acls]
+        bsvc.provider = opt[:provider]
         result = advertise_brokered_service_to_cc(svc)
         if result
           if not bsvc.save
