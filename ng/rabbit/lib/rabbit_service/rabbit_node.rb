@@ -319,7 +319,7 @@ class VCAP::Services::Rabbit::Node
   end
 
   def get_admin_port(port)
-    @rabbitmq_admin_port
+    port + 10000
   end
 
   def get_instance(name)
@@ -339,7 +339,7 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
   property :name,            String,      :key => true
   property :vhost,           String,      :required => true
   property :port,            Integer,     :unique => true
-  property :admin_port,      Integer,     :unique => true
+  property :admin_port,      Integer
   property :admin_username,  String,      :required => true
   property :admin_password,  String,      :required => true
   # property plan is deprecated. The instances in one node have same plan.
