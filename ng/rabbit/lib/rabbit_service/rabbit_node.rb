@@ -319,7 +319,7 @@ class VCAP::Services::Rabbit::Node
   end
 
   def get_admin_port(port)
-    @rabbitmq_admin_port
+    port + 10000
   end
 
   def get_instance(name)
@@ -392,6 +392,7 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
 
       # Generate configuration
       port = @@options[:service_port]
+      admin_port = @@options[:service_admin_port]
       vm_memory_high_watermark = @@options[:vm_memory_high_watermark]
       # In RabbitMQ, If the file_handles_high_watermark is x, then the socket limitation is trunc(x * 0.9) - 2,
       # to let the @max_clients be a more accurate limitation,
