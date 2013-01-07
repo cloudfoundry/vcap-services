@@ -193,28 +193,32 @@ module VCAP
         end
 
         def stop_redis_server(instance)
-          Timeout::timeout(@redis_timeout) do
-            redis = ::Redis.new({:port => instance.port, :password => instance.password})
-            begin
-              redis.shutdown(@shutdown_command_name)
-            rescue RuntimeError => e
-              if e.message == "ERR max number of clients reached"
-                # The max clients limitation could be reached, try to kill the process
-                  instance.kill
-                  instance.wait_killed ?
-                    @logger.debug("Redis server pid: #{instance.pid} terminated") :
-                    @logger.error("Timeout to terminate Redis server pid: #{instance.pid}")
-              else
-                # It could be a disabled instance
-                if @disable_password
-                  redis = ::Redis.new({:port => instance.port, :password => @disable_password})
-                  redis.shutdown(@shutdown_command_name)
+          begin
+            Timeout::timeout(@redis_timeout) do
+              redis = ::Redis.new({:port => instance.port, :password => instance.password})
+              begin
+                redis.shutdown(@shutdown_command_name)
+              rescue RuntimeError => e
+                if e.message == "ERR max number of clients reached"
+                  # The max clients limitation could be reached, try to kill the process
+                    instance.kill
+                    instance.wait_killed ?
+                      @logger.debug("Redis server pid: #{instance.pid} terminated") :
+                      @logger.error("Timeout to terminate Redis server pid: #{instance.pid}")
+                else
+                  # It could be a disabled instance
+                  if @disable_password
+                    redis = ::Redis.new({:port => instance.port, :password => @disable_password})
+                    redis.shutdown(@shutdown_command_name)
+                  end
                 end
               end
             end
+          rescue Timeout::Error => e
+            @logger.warn(e)
           end
-        rescue Timeout::Error => e
-          @logger.warn(e)
+          # Force to kill the process if cannot be normally stopped
+          instance.kill(SIGKILL) if instance.running?
         end
 
         def close_fds

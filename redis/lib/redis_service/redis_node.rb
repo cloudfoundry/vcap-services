@@ -385,8 +385,6 @@ class VCAP::Services::Redis::Node
       # Stop the instance if it is running
       instance.pid = pid
       stop_instance(instance) if instance.running?
-      # Force to kill the process if cannot be normally stopped
-      instance.kill(SIGKILL) if instance.running?
       raise RedisError.new(RedisError::REDIS_START_INSTANCE_FAILED, instance.inspect)
     else
       $0 = "Starting Redis instance: #{instance.name}, Version: #{get_version(instance)}"
