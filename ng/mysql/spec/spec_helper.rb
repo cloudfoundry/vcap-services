@@ -137,6 +137,7 @@ def getNodeTestConfig()
   else
     options[:ip_route] = "127.0.0.1"
   end
+  options[:supported_versions].each { |v| options[:mysql][v]["host"] = "127.0.0.1" }
   options
 end
 
