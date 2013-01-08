@@ -25,6 +25,7 @@ mysql:
     port: 3306
     user: root
     pass: root
+    socket: /var/vcap/sys/run/mysqld/mysqld.sock
     mysqldump_bin: /var/vcap/packages/mysql/bin/mysqldump
     mysql_bin: /var/vcap/packages/mysql/bin/mysql
   '5.5':
@@ -32,6 +33,7 @@ mysql:
     port: 3307
     user: root
     pass: root
+    socket: /var/vcap/sys/run/mysqld/mysqld55.sock
     mysqldump_bin: /var/vcap/packages/mysql55/bin/mysqldump
     mysql_bin: /var/vcap/packages/mysql55/bin/mysql
 connection_pool_size:
