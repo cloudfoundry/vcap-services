@@ -59,7 +59,7 @@ class VCAP::Services::Rabbit::Node
   end
 
   def pre_send_announcement
-    start_all_instances(@service_parallel_start_timeout)
+    start_all_instances
     @capacity_lock.synchronize{ @capacity -= ProvisionedService.all.size }
     warden_node_init(@options)
   end
@@ -395,7 +395,7 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
         Open3.capture3("umount #{instance.base_dir}") if File.exist?(instance.base_dir)
       rescue => e
       end
-      [instance.base_dir, instance.log_dir, instance.image_file].each do |f| 
+      [instance.base_dir, instance.log_dir, instance.image_file].each do |f|
         FileUtils.rm_rf(f)
       end
       instance.prepare_filesystem(max_disk)
