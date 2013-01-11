@@ -15,11 +15,11 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-common.git
-  revision: fd6b6d91b19c551cf5091c8469595df923dd2612
-  ref: fd6b6d91
+  revision: 055964f62282c94ebe7c3ce6f4df9fb093a17714
+  ref: 055964f622
   specs:
-    vcap_common (2.0.7)
-      em-http-request (~> 1.0.0.beta3)
+    vcap_common (2.0.10)
+      em-http-request (~> 1.0.0.beta3, < 1.0.0.beta4)
       eventmachine
       httpclient
       membrane (~> 0.0.2)
@@ -28,14 +28,15 @@ GIT
       nats (~> 0.4.24)
       posix-spawn (~> 0.3.6)
       thin
-      yajl-ruby (~> 0.8.3)
+      yajl-ruby
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-services-base.git
-  revision: 88a5b8049ee8b31a11274447901c888f7421c59f
-  ref: 88a5b80
+  revision: 5024076da9f1377fce1ceb924aa9128ac9a1d759
+  ref: 5024076da9
   specs:
-    vcap_services_base (0.1.16)
+    vcap_services_base (0.1.17)
+      cf-uaa-lib
       curb (~> 0.7.16)
       datamapper (~> 1.1.0)
       do_sqlite3 (~> 0.10.3)
@@ -73,6 +74,8 @@ GEM
     bcrypt-ruby (2.1.4)
     beefcake (0.3.7)
     builder (3.0.0)
+    cf-uaa-lib (1.3.4)
+      multi_json
     ci_reporter (1.6.4)
       builder (>= 2.1.2)
     curb (0.7.18)
@@ -133,7 +136,7 @@ GEM
     eventmachine_httpserver (0.2.1)
     fastercsv (1.5.5)
     http_parser.rb (0.5.3)
-    httpclient (2.2.7)
+    httpclient (2.3.2)
     json (1.4.6)
     json_pure (1.7.3)
     macaddr (1.6.1)
@@ -198,7 +201,7 @@ GEM
     uuidtools (2.1.3)
     vegas (0.1.11)
       rack (>= 1.0.0)
-    yajl-ruby (0.8.3)
+    yajl-ruby (1.1.0)
 
 PLATFORMS
   ruby
