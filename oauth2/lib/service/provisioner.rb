@@ -12,7 +12,7 @@
 #++
 
 require 'uaa/token_issuer'
-require 'uaa/client_reg'
+require 'uaa/scim'
 
 module CF::UAA::OAuth2Service
 end
@@ -79,7 +79,7 @@ class CF::UAA::OAuth2Service::Provisioner < VCAP::Services::Base::Provisioner
     svc = @prov_svcs[instance_id]
     raise ServiceError.new(ServiceError::NOT_FOUND, "instance_id #{instance_id}") if svc == nil
     async do
-      client.delete(instance_id)
+      client.delete(:client, instance_id)
     end
     bindings = find_all_bindings(instance_id)
     @prov_svcs.delete(instance_id)
@@ -155,7 +155,7 @@ class CF::UAA::OAuth2Service::Provisioner < VCAP::Services::Base::Provisioner
       @logger.debug("Updating redirect uris, credentials=#{credentials}, config=#{config}")
 
       client_id = credentials["client_id"]
-      details = client.get(client_id)
+      details = client.get(:client, client_id)
       if details.nil?
         @logger.warn("No client details for: #{client_id}")
         return
@@ -198,7 +198,7 @@ class CF::UAA::OAuth2Service::Provisioner < VCAP::Services::Base::Provisioner
         details[:redirect_uri] = redirect_uri
         @logger.debug("Updating client details with redirects: #{redirect_uri}")
         begin
-          client.update(details)
+          client.put(:client, details)
         rescue CF::UAA::NotFound
           @logger.debug("Not found (already deleted?)")
         end
@@ -214,7 +214,7 @@ class CF::UAA::OAuth2Service::Provisioner < VCAP::Services::Base::Provisioner
     token = CF::UAA::TokenIssuer.new(@uaa_url, @client_id, @client_secret).client_credentials_grant
     @logger.info("Client token: #{token}")
     @auth_header = token.auth_header
-    @client = CF::UAA::ClientReg.new(@uaa_url, @auth_header)
+    @client = CF::UAA::Scim.new(@uaa_url, @auth_header)
     @client.async = @async
     @client
   end
@@ -244,7 +244,7 @@ class CF::UAA::OAuth2Service::Provisioner < VCAP::Services::Base::Provisioner
   def gen_credentials(name, owner)
     client_secret = UUIDTools::UUID.random_create.to_s
     async do
-      client.create(:client_id=>name, :client_secret=>client_secret,
+      client.add(:client, :client_id=>name, :client_secret=>client_secret,
                    :scope => ["cloud_controller.read", "cloud_controller.write", "openid"],
                    :authorized_grant_types => ["authorization_code", "refresh_token"],
                    :access_token_validity => 10*60,

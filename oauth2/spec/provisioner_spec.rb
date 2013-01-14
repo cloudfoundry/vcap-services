@@ -21,13 +21,13 @@ module CF::UAA
     end
   end
 
-  class ClientReg
+  class Scim
 
     class << self
       attr_accessor :simulate_fail
     end
 
-    def create(info)
+    def add(type, info)
       maybe_async do
         if ClientReg::simulate_fail
           ClientReg::simulate_fail = false
@@ -39,17 +39,17 @@ module CF::UAA
       end
     end
 
-    def update(info)
+    def put(type, info)
       maybe_async do
         info
       end
     end
 
-    def delete(id)
+    def delete(type, id)
       maybe_async {}
     end
 
-    def get(id)
+    def get(type, id)
       maybe_async do
         {
           :client_id => id,
