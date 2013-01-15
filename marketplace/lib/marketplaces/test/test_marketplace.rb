@@ -102,7 +102,7 @@ module VCAP
 
             request =  VCAP::Services::Api::GatewayProvisionRequest.decode(request_body)
             service_id,version = request.label.split("-")
-            @logger.info("Provision request for label=#{request.label} (service_id=#{service_id}) plan=#{request.plan}, version=#{request.version}")
+            @logger.info("Provision request: #{request.inspect} - for label=#{request.label} (service_id=#{service_id}) plan=#{request.plan}, version=#{request.version}")
             {
               :configuration => {:plan => request.plan, :name => request.name, :options => {} },
               :credentials => { "url" => "http://testservice.com/#{UUIDTools::UUID.random_create.to_s}" },

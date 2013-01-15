@@ -44,7 +44,9 @@ module VCAP
             appdirect_catalog = @helper.load_catalog
             catalog = {}
             appdirect_catalog.each { |s|
-              name, provider = load_mapped_name_and_provider(s["name"], s["vendor"])
+              name, provider = load_mapped_name_and_provider(
+                s["label"] || s["name"],
+                s["provider"] || s["vendor"])
               version = s["version"] || "1.0" # UNTIL AD fixes this...
               key = key_for_service(name, version, provider)
 
@@ -56,7 +58,7 @@ module VCAP
               plans = {}
               if s["plans"] and s["plans"].count > 0
                 s["plans"].each do |plan|
-                  plans[plan["id"]] = plan["description"]
+                  plans[plan["id"]] = { "description" => plan["description"], "free" => true } # TODO: get free flag from AD
                 end
               end
 
@@ -64,8 +66,8 @@ module VCAP
               catalog[key] = {
                 "id"          => name,
                 "version"     => version,
-                "description" => s["description"],
-                "info_url"    => s["infoUrl"],
+                "description" => s["description"] || "no description",
+                "info_url"    => s["info_url"]    || s["infoUrl"],
                 "plans"       => plans,
                 "provider"    => provider,
                 "acls"        => acls,
@@ -108,20 +110,27 @@ module VCAP
             id = @service_id_map[id] if @service_id_map.keys.include?(id)
             @logger.debug("Provision request for label=#{request.label} (id=#{id}) plan=#{request.plan}, version=#{request.version}")
 
+            # TODO: Temporary measure until we fix gateway provision request to send us provider
+            name, provider = load_mapped_name_and_provider(id, nil)
+
             order = {
               "user" => {
-                "uuid" => nil, # TODO: replace with actual UUID from ccng
+                # "uuid"  => request.user_guid,
                 "email" => request.email
               },
               "offering" => {
-                "id" => id,
-                "version" => request.version || version
+                "label" => name, # TODO: this should be id,
+                "provider" => provider # TODO: request.provider,
+                # "version" => request.version || version
               },
               "configuration" => {
                 "plan" => request.plan,
                 "name" => request.name,
-                "options" => {}
-              }
+                # "options" => {}
+              },
+              # "billing" => {
+              #  "space_guid" => request.space_guid
+              # }
             }
             receipt = @helper.purchase_service(order)
 
