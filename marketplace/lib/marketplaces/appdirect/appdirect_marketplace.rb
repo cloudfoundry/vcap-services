@@ -44,7 +44,10 @@ module VCAP
             appdirect_catalog = @helper.load_catalog
             catalog = {}
             appdirect_catalog.each { |s|
-              name, provider = load_mapped_name_and_provider(s["name"], s["vendor"])
+              mapping = load_mapped_name_and_provider(s["label"], s["provider"])
+              name     = mapping[:name]
+              provider = mapping[:provider]
+
               version = s["version"] || "1.0" # UNTIL AD fixes this...
               key = key_for_service(name, version, provider)
 
@@ -56,7 +59,7 @@ module VCAP
               plans = {}
               if s["plans"] and s["plans"].count > 0
                 s["plans"].each do |plan|
-                  plans[plan["id"]] = plan["description"]
+                  plans[plan["id"]] = { "description" => plan["description"], "free" => plan["free"] }
                 end
               end
 
@@ -65,7 +68,7 @@ module VCAP
                 "id"          => name,
                 "version"     => version,
                 "description" => s["description"],
-                "info_url"    => s["infoUrl"],
+                "info_url"    => s["info_url"],
                 "plans"       => plans,
                 "provider"    => provider,
                 "acls"        => acls,
@@ -78,17 +81,10 @@ module VCAP
           end
 
           def load_mapped_name_and_provider(name, provider)
-             svc_label = name
+            @mapping[name.to_sym] if @mapping.keys.include?(name.to_sym)
 
-             # We'll use the service id as provider unless appdirect sends otherwise
-             svc_provider = provider || name
-             if (@mapping.keys.include?(name.to_sym))
-               service_mapping = @mapping[name.to_sym]
-               svc_label = service_mapping[:name]
-               svc_provider = service_mapping[:provider]
-            end
-
-            [svc_label, svc_provider]
+            # If mapping is not defined, then just use defaults
+            { :name => name, :provider => provider }
           end
 
           def offering_disabled?(id, offerings_list)
@@ -106,21 +102,28 @@ module VCAP
             request =  VCAP::Services::Api::GatewayProvisionRequest.decode(request_body)
             id,version = request.label.split("-")
             id = @service_id_map[id] if @service_id_map.keys.include?(id)
-            @logger.debug("Provision request for label=#{request.label} (id=#{id}) plan=#{request.plan}, version=#{request.version}")
+
+            # TODO: Temporary measure until we fix gateway provision request to send us provider
+            mapping  = load_mapped_name_and_provider(id, nil)
+            provider = mapping[:provider] # TODO: Replace with request.provider
+
+            @logger.debug("Provision request for offering: #{request.label} (id=#{id}) provider=#{provider}, plan=#{request.plan}, version=#{request.version}")
 
             order = {
               "user" => {
-                "uuid" => nil, # TODO: replace with actual UUID from ccng
+                "uuid"  => request.user_guid,
                 "email" => request.email
               },
               "offering" => {
-                "id" => id,
-                "version" => request.version || version
+                "label"    => id,
+                "provider" => provider
               },
               "configuration" => {
                 "plan" => request.plan,
                 "name" => request.name,
-                "options" => {}
+              },
+              "billing" => {
+                "space_guid" => request.space_guid
               }
             }
             receipt = @helper.purchase_service(order)
