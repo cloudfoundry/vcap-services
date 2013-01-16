@@ -1,4 +1,4 @@
-#!/usr/bin/env ruby
+#!/var/vcap/packages/ruby/bin/ruby
 # -*- mode: ruby -*-
 #
 # Copyright (c) 2009-2012 VMware, Inc.

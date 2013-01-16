@@ -1,4 +1,4 @@
-#!/usr/bin/env ruby
+#!/var/vcap/packages/ruby/bin/ruby
 # Copyright (c) 2009-2011 VMware, Inc.
 #
 # This script is used to backup mysql instances used in MyaaS.

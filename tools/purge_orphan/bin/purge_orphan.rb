@@ -1,4 +1,4 @@
-#!/usr/bin/env ruby
+#!/var/vcap/packages/ruby/bin/ruby
 require 'eventmachine'
 require 'em-http'
 require 'yajl'

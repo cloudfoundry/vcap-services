@@ -1,4 +1,4 @@
-#!/usr/bin/env ruby
+#!/var/vcap/packages/ruby/bin/ruby
 # -*- mode: ruby -*-
 # Copyright (c) 2009-2011 VMware, Inc.
 ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
