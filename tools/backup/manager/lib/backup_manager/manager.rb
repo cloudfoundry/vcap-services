@@ -27,7 +27,9 @@ class VCAP::Services::Backup::Manager < VCAP::Services::Base::Base
     when "backups"
       @tasks << VCAP::Services::Backup::Rotator.new(self, options[:rotation])
     when "snapshots"
-      @tasks << VCAP::Services::Backup::SnapshotCleaner.new(self, options[:cleanup])
+      @tasks << VCAP::Services::Backup::SnapshotCleaner.new(self, options[:snapshot_cleanup])
+    when "sds"
+      @tasks << VCAP::Services::Backup::SdsCleaner.new(self, options[:sds_cleanup])
     when "jobs"
       @tasks << VCAP::Services::Backup::JobCleaner.new(self, options[:job_cleanup], options[:services_redis])
     else

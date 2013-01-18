@@ -7,7 +7,7 @@ pid: /var/vcap/sys/run/snapshot_manager.pid
 root: /mnt/appcloud
 enable: true
 wakeup_interval: 3600
-snapshot_cleanup:
+sds_cleanup:
   max_days: 7
   greedy_mark: false
   cloud_controller_uri: api.vcap.me

@@ -1,4 +1,4 @@
-# Copyright (c) 2009-2011 VMware, Inc.
+# Copyright (c) 2009-2013 VMware, Inc.
 require 'time'
 require 'em-http'
 require 'json'
@@ -15,6 +15,6 @@ end
 
 require 'util'
 
-class VCAP::Services::Backup::SnapshotCleaner
+class VCAP::Services::Backup::SdsCleaner
   include VCAP::Services::Backup::LifecycleUtils
 end
