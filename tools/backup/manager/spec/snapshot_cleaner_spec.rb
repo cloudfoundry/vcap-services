@@ -26,7 +26,7 @@ describe BackupSnapshotCleanerTests do
       cleaner.all_cleanuped.length.should == 0
       cleaner.keep_marked.length.should == 0
       cleaner.mark_cleanuped.length.should == 0
-      cleaner.nooped.length.should == 1
+      cleaner.nooped.length.should == 2
     end
   end
 
@@ -62,8 +62,8 @@ describe BackupSnapshotCleanerTests do
         })
         BackupSnapshotCleanerTests.create_cleaner('cc_test',opts) do |cleaner|
           cleaner.run.should be_true
-          cleaner.nooped.length.should == 3
-          cleaner.mark_cleanuped.length.should == 2  # one is first time to mark, the other is re-mark
+          cleaner.nooped.length.should == 6
+          cleaner.mark_cleanuped.length.should == 4  # one is first time to mark, the other is re-mark
           cleaner.keep_marked.length.should == 0
           cleaner.all_cleanuped.length.should == 1
         end
