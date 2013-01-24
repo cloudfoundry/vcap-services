@@ -52,7 +52,6 @@ class VCAP::Services::Postgresql::Backup < VCAP::Services::Base::Backup
     begin
       VCAP::Services::Postgresql::Node.setup_datamapper(:default, opts[:local_db])
     rescue => e
-      # argument error
       echo "Exception while setting up the local database: #{e}"
       return 1
     end
@@ -110,7 +109,7 @@ class VCAP::Services::Postgresql::Backup < VCAP::Services::Base::Backup
 
   def exe_backup_db(opts)
     backup_cmd, name, ts =
-      %w(backup_cmd name ts).map{|k| opts[k.to_sym]}
+      %w(backup_cmd name ts).map{ |k| opts[k.to_sym] }
     # dir structure looks like \backups\<service-name>\<aa>\<bb>\<cc>\
     # <aabbcc-rest-of-instance-guid>\<seconds_since_epoc>\<service specific data>
     full_path = get_dump_path(name)

@@ -530,7 +530,6 @@ module VCAP
         # dump_file: the file to store the dumped data
         # opts: optional arguments
         #   dump_bin
-        #   logger
         def dump_database(name, host, port, user, passwd, dump_file, opts = {})
           raise "You must provide the following arguments: name, host, port, user, passwd, dump_file" unless name && host && port && user && passwd && dump_file
 
@@ -538,13 +537,8 @@ module VCAP
           dump_cmd = "#{dump_bin} -Fc --host=#{host} --port=#{port} --username=#{user} --file=#{dump_file} #{name}"
 
           # running the command
-          on_err = Proc.new do |cmd, code, msg|
-            opts[:logger].error("CMD '#{cmd}' exit with code: #{code} & Message: #{msg}") if opts[:logger]  && opts[:logger].respond_to?(:error)
-          end
-
-          result = CMDHandle.execute(dump_cmd, nil, on_err )
-          raise "Failed to dump database of #{name}" unless result
-          result
+          o, e, s = exe_cmd(dump_cmd)
+          s.exitstatus == 0
         end
 
         # Use this method to filter the un-supported archive elements in HACK style
@@ -559,7 +553,7 @@ module VCAP
 
           cmd = "#{restore_bin} -l #{dump_file} | #{exclude_cmd} > #{dump_file}.archive_list"
           o, e, s = exe_cmd(cmd)
-          return s.exitstatus == 0
+          s.exitstatus == 0
         end
 
         # Use this method for restoring and importing the database
@@ -571,7 +565,6 @@ module VCAP
         # dump_file: the file which stores the dumped data
         # opts: optional arguments
         #   restore_bin
-        #   logger
         def restore_database(name, host, port, user, passwd, dump_file, opts = {})
           raise "You must provide the following arguments: name, host, port, user, passwd, dump_file" unless name && host && port && user && passwd && dump_file
 
