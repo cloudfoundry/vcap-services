@@ -154,14 +154,8 @@ module VCAP
           pgconn.query("alter database #{name} owner to #{owner}")
         end
 
-        # Legacy method to alter owner of relationship from sys_user to user
-        def do_grant_query(db_connection,user,sys_user)
-          return unless db_connection
-          db_connection.query("update pg_class set relowner = (select oid from pg_roles where rolname = '#{user}') where relowner = (select oid from pg_roles where rolname = '#{sys_user}')")
-        end
-
         # Legacy method to revoke privileges of public shcema
-        def do_revoke_query(db_connection, user, sys_user)
+        def do_revoke_query(db_connection, user)
           db_connection.query("revoke create on schema public from #{user} CASCADE")
           if pg_version(db_connection) == '9'
             db_connection.query("REVOKE ALL ON ALL TABLES IN SCHEMA PUBLIC from #{user} CASCADE")
@@ -177,16 +171,6 @@ module VCAP
                db_connection.query(query_to_do['query_to_do'].to_s)
             end
           end
-
-          # with the fix for user access rights in r8, actually this line is a no-op.
-          # - for newly created users(after the fix), all objects created will be owned by parent
-          # - for existing users(created before the fix), if quota exceeds, then sys_user will
-          #  own the objects, but, when the fix comes, the migration job will pull all the objects
-          #  (both user and sys_user) to parent as the owner. So, after the fix comes, there is no
-          #  object owned by sys_user.
-          # while quota can be still enforced because 'revoke_write_access' and 'do_revoke_query'
-          # do the work.
-          db_connection.query("update pg_class set relowner = (select oid from pg_roles where rolname = '#{sys_user}') where relowner = (select oid from pg_roles where rolname ='#{user}')")
         end
 
         # Legacy method to grant user privileges of public schema
@@ -294,17 +278,7 @@ module VCAP
             end
             service.pgbindusers.all.each do |binduser|
               user = binduser.user
-              sys_user = binduser.sys_user
-              sys_password = binduser.sys_password
-              db_conn_sys_user = postgresql_connect(db_conn.host, sys_user, sys_password, db_conn.port, name, :quick => true)
-              if db_conn_sys_user.nil?
-                raise "Unable to grant write access to #{name} for #{sys_user}"
-              else
-                db_conn_sys_user.close
-                do_grant_query(db_conn, user, sys_user)
-              end
               db_conn.query("GRANT TEMP ON DATABASE #{name} to #{user}")
-              db_conn.query("GRANT TEMP ON DATABASE #{name} to #{sys_user}")
             end
             grant_schema_write_access(db_conn, public_schema_id, 'public', 'public')
             schemas.each do |sc, sc_id|
@@ -363,11 +337,9 @@ module VCAP
             # revoke temp privilege on the database
             service.pgbindusers.all.each do |binduser|
               user = binduser.user
-              sys_user = binduser.sys_user
               kill_alive_sessions(pgconn, name, user)
               db_conn.query("REVOKE TEMP ON DATABASE #{name} from #{user}")
-              db_conn.query("REVOKE TEMP ON DATABASE #{name} from #{sys_user}")
-              do_revoke_query(db_conn, user, sys_user)
+              do_revoke_query(db_conn, user)
             end
           end
           service.quota_exceeded = true
@@ -449,7 +421,6 @@ module VCAP
             if binduser.default_user == false
               db_connection.query("revoke #{default_user[:user]} from #{binduser.user}")
               db_connection.query("revoke connect on database #{name} from #{binduser.user}")
-              db_connection.query("revoke connect on database #{name} from #{binduser.sys_user}")
             end
           end
         end
@@ -461,7 +432,6 @@ module VCAP
           service.pgbindusers.all.each do |binduser|
             if binduser.default_user == false
               db_connection.query("GRANT CONNECT ON DATABASE #{name} to #{binduser.user}")
-              db_connection.query("GRANT CONNECT ON DATABASE #{name} to #{binduser.sys_user}")
               db_connection.query("GRANT #{default_user[:user]} to #{binduser.user}")
             end
           end
@@ -472,7 +442,6 @@ module VCAP
           return unless conn && service
           service.pgbindusers.each do |binduser|
             conn.query("revoke connect on database #{db} from #{binduser.user}")
-            conn.query("revoke connect on database #{db} from #{binduser.sys_user}")
           end
         end
 
@@ -481,7 +450,6 @@ module VCAP
           return unless conn && service
           service.pgbindusers.each do |binduser|
             conn.query("grant connect on database #{db} to #{binduser.user}")
-            conn.query("grant connect on database #{db} to #{binduser.sys_user}")
           end
         end
 

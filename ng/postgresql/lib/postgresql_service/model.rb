@@ -38,9 +38,7 @@ module VCAP
         class Binduser
           include DataMapper::Resource
           property :user,       String,   :key => true
-          property :sys_user,    String,    :required => true
           property :password,   String,   :required => true
-          property :sys_password,    String,    :required => true
           property :default_user,  Boolean, :default => false
           belongs_to :provisionedservice
         end
@@ -166,9 +164,7 @@ module VCAP
         class Wardenbinduser
           include DataMapper::Resource
           property :user,       String,   :key => true
-          property :sys_user,    String,    :required => true
           property :password,   String,   :required => true
-          property :sys_password,    String,    :required => true
           property :default_user,  Boolean, :default => false
           belongs_to :wardenprovisionedservice
         end

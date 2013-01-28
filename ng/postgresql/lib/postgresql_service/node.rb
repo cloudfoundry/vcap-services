@@ -128,8 +128,8 @@ class VCAP::Services::Postgresql::Node
     pgProvisionedService.all.each do |provisionedservice|
       db = provisionedservice.name
       provisionedservice.pgbindusers.all.each do |binduser|
-        user, sys_user = binduser.user, binduser.sys_user
-        if not db_list.include?([db, user]) or not db_list.include?([db, sys_user]) then
+        user = binduser.user
+        if not db_list.include?([db, user])
           @logger.warn("Node database inconsistent!!! db:user <#{db}:#{user}> not in PostgreSQL.")
           next
         end
@@ -182,8 +182,6 @@ class VCAP::Services::Postgresql::Node
         binduser.user = "u-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
         binduser.password = "p-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
       end
-      binduser.sys_user = "su-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
-      binduser.sys_password = "sp-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
       binduser.default_user = true
       provisionedservice.pgbindusers << binduser
 
@@ -250,13 +248,9 @@ class VCAP::Services::Postgresql::Node
         new_user = "u-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
         new_password = "p-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
       end
-      new_sys_user = "su-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
-      new_sys_password = "sp-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
       binduser = pgBindUser.new
       binduser.user = new_user
       binduser.password = new_password
-      binduser.sys_user = new_sys_user
-      binduser.sys_password = new_sys_password
       binduser.default_user = false
 
       instance = pgProvisionedService.get(name)
@@ -323,7 +317,6 @@ class VCAP::Services::Postgresql::Node
     begin
       start = Time.now
       user = bindusers[0].user
-      sys_user = bindusers[0].sys_user
       @logger.info("Creating: #{provisionedservice.inspect}")
       conn = setup_global_connection(provisionedservice)
       unless conn
@@ -357,8 +350,6 @@ class VCAP::Services::Postgresql::Node
 
     user = binduser.user
     password = binduser.password
-    sys_user = binduser.sys_user
-    sys_password = binduser.sys_password
     begin
       @logger.info("Creating credentials: #{user}/#{password} for database #{name}")
       exist_user = global_conn.query("select * from pg_roles where rolname = '#{user}'")
@@ -374,13 +365,10 @@ class VCAP::Services::Postgresql::Node
           global_conn.query("CREATE ROLE #{user} LOGIN PASSWORD '#{password}'")
         end
       end
-      @logger.info("Create sys_role: #{sys_user}/#{sys_password}")
-      global_conn.query("CREATE ROLE #{sys_user} LOGIN PASSWORD '#{sys_password}'")
 
       @logger.info("Grant proper privileges ...")
       db_connection = management_connection(instance, true)
       raise PGError("Fail to connect to database #{name}") unless db_connection
-      db_connection.query("GRANT CONNECT ON DATABASE #{name} to #{sys_user}")
       db_connection.query("GRANT CONNECT ON DATABASE #{name} to #{user}")
       #Ignore privileges Initializing error. Log only.
       begin
@@ -389,13 +377,10 @@ class VCAP::Services::Postgresql::Node
           # In fact, this is a noop, for the create privilege of parent user should be revoked in revoke_write_access when quota is exceeded.
           db_connection.query("REVOKE CREATE ON DATABASE #{name} FROM #{user}") unless parent
           db_connection.query("REVOKE TEMP ON DATABASE #{name} from #{user}")
-          db_connection.query("REVOKE TEMP ON DATABASE #{name} from #{sys_user}")
-          do_revoke_query(db_connection, user, sys_user)
         else
           # grant create privilege on database to parent role
           db_connection.query("GRANT CREATE ON DATABASE #{name} TO #{user}") unless parent
           db_connection.query("GRANT TEMP ON DATABASE #{name} to #{user}")
-          db_connection.query("GRANT TEMP ON DATABASE #{name} to #{sys_user}")
           exe_grant_user_priv(db_connection)
         end
       rescue PGError => e
@@ -419,9 +404,7 @@ class VCAP::Services::Postgresql::Node
         if default_binduser
           # should drop objects owned by the default user, such as created schemas
           global_conn.query("DROP OWNED BY #{default_binduser.user}")
-          global_conn.query("DROP OWNED BY #{default_binduser.sys_user}")
           global_conn.query("DROP ROLE IF EXISTS #{default_binduser.user}")
-          global_conn.query("DROP ROLE IF EXISTS #{default_binduser.sys_user}")
         end
         true
       else
@@ -435,26 +418,22 @@ class VCAP::Services::Postgresql::Node
   end
 
   def delete_database_user(binduser,db)
-    @logger.info("Delete user #{binduser.user}/#{binduser.sys_user}")
+    @logger.info("Delete user #{binduser.user}")
     instance = pgProvisionedService.get(db)
     db_connection = management_connection(instance, true)
     raise PGError("Fail to connect to database #{db}") unless db_connection
     begin
-      db_connection.query("select pg_terminate_backend(procpid) from pg_stat_activity where usename = '#{binduser.user}' or usename = '#{binduser.sys_user}'")
+      db_connection.query("select pg_terminate_backend(procpid) from pg_stat_activity where usename = '#{binduser.user}'")
     rescue PGError => e
       @logger.warn("Could not kill user session: #{e}")
     end
     #Revoke dependencies. Ignore error.
     begin
       db_connection.query("DROP OWNED BY #{binduser.user}")
-      db_connection.query("DROP OWNED BY #{binduser.sys_user}")
       if pg_version(db_connection) == '9'
         db_connection.query("REVOKE ALL ON ALL TABLES IN SCHEMA PUBLIC from #{binduser.user} CASCADE")
         db_connection.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA PUBLIC from #{binduser.user} CASCADE")
         db_connection.query("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA PUBLIC from #{binduser.user} CASCADE")
-        db_connection.query("REVOKE ALL ON ALL TABLES IN SCHEMA PUBLIC from #{binduser.sys_user} CASCADE")
-        db_connection.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA PUBLIC from #{binduser.sys_user} CASCADE")
-        db_connection.query("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA PUBLIC from #{binduser.sys_user} CASCADE")
       else
         queries = db_connection.query("select 'REVOKE ALL ON '||tablename||' from #{binduser.user} CASCADE;' as query_to_do from pg_tables where schemaname = 'public'")
         queries.each do |query_to_do|
@@ -464,24 +443,13 @@ class VCAP::Services::Postgresql::Node
         queries.each do |query_to_do|
           db_connection.query(query_to_do['query_to_do'].to_s)
         end
-        queries = db_connection.query("select 'REVOKE ALL ON '||tablename||' from #{binduser.sys_user} CASCADE;' as query_to_do from pg_tables where schemaname = 'public'")
-        queries.each do |query_to_do|
-          db_connection.query(query_to_do['query_to_do'].to_s)
-        end
-        queries = db_connection.query("select 'REVOKE ALL ON SEQUENCE '||relname||' from #{binduser.sys_user} CASCADE;' as query_to_do from pg_class where relkind = 'S'")
-        queries.each do |query_to_do|
-          db_connection.query(query_to_do['query_to_do'].to_s)
-        end
       end
       db_connection.query("REVOKE ALL ON DATABASE #{db} from #{binduser.user} CASCADE")
       db_connection.query("REVOKE ALL ON SCHEMA PUBLIC from #{binduser.user} CASCADE")
-      db_connection.query("REVOKE ALL ON DATABASE #{db} from #{binduser.sys_user} CASCADE")
-      db_connection.query("REVOKE ALL ON SCHEMA PUBLIC from #{binduser.sys_user} CASCADE")
     rescue PGError => e
       @logger.warn("Could not revoke user dependencies: #{e}")
     end
     db_connection.query("DROP ROLE #{binduser.user}")
-    db_connection.query("DROP ROLE #{binduser.sys_user}")
     db_connection.close
     true
   rescue PGError => e
