@@ -60,20 +60,15 @@ module VCAP
 
               # Setup plans
               plans = {}
-              if s["plans"] and s["plans"].count > 0
-                s["plans"].each do |plan|
-                  plans[plan["id"]] = {
-                    "description" => plan["description"] || plan["id"], # UNTIL AD fixes this...
-                    "free" => plan["free"] || true # UNTIL AD fixes this...
-                  }
-                end
+              s["plans"].each do |plan|
+                plans[plan["id"]] = { :description => plan["description"], :free => plan["free"] }
               end
 
               # Finally, generate the catalog entry
               catalog[key] = {
                 "id"          => name,
                 "version"     => version,
-                "description" => s["description"],
+                "description" => s["description"] || "No description",
                 "info_url"    => s["info_url"],
                 "plans"       => plans,
                 "provider"    => provider,
