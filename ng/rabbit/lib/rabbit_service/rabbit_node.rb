@@ -389,6 +389,7 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
       end
       instance.prepare_filesystem(max_disk)
       FileUtils.mkdir_p(instance.config_dir)
+      FileUtils.mkdir_p(instance.home_dir)
       FileUtils.mkdir_p(instance.log_dir)
       # Writes the RabbitMQ server erlang configuration file
       File.open(config_path, "w") {|f| f.write(config)}
@@ -406,6 +407,7 @@ EOF
     options = super
     options[:start_script] = {:script => "#{service_script} start #{base_dir} #{log_dir} #{common_dir} #{bin_dir} #{erlang_dir} #{name}", :use_spawn => true}
     options[:bind_dirs] << {:src => erlang_dir}
+    options[:bind_dirs] << {:src => home_dir, :dst => "/home/vcap"}
     options
   end
 
@@ -440,6 +442,10 @@ EOF
   # diretory helper
   def config_dir
     File.join(base_dir, "config")
+  end
+
+  def home_dir
+    File.join(base_dir, "home")
   end
 
   def service_admin_port
