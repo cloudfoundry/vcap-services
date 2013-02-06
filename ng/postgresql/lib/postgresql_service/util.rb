@@ -43,10 +43,6 @@ module VCAP
           logger
         end
 
-        def generate_credential(length=12)
-          Array.new(length) { VALID_CREDENTIAL_CHARACTERS[rand(VALID_CREDENTIAL_CHARACTERS.length)] }.join
-        end
-
         # shell CMD wrapper and logger
         def exe_cmd(cmd, env={}, stdin=nil)
           @logger ||= create_logger
