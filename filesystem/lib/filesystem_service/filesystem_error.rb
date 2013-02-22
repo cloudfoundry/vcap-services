@@ -1,4 +1,4 @@
-# Copyright (c) 2009-2011 VMware, Inc.
+# Copyright (c) 2009-2012 VMware, Inc.
 
 module VCAP
   module Services
@@ -10,6 +10,9 @@ module VCAP
         FILESYSTEM_GET_BACKEND_FAILED                     = [31902, HTTP_INTERNAL, "Could not get backend"]
         FILESYSTEM_GET_BACKEND_BY_HOST_AND_EXPORT_FAILED  = [31903, HTTP_INTERNAL, "Could not get backend by host %s and export %s"]
         FILESYSTEM_FIND_INSTANCE_FAILED                   = [31904, HTTP_NOT_FOUND, "Could not find instance: %s"]
+        FILESYSTEM_INVALID_PLAN                           = [31905, HTTP_INTERNAL, "Invalid plan: %s"]
+        FILESYSTEM_CLEANUP_INSTANCE_FAILED                = [31906, HTTP_INTERNAL, "Could not cleanup instance, the reasons: %s"]
+        FILESYSTEM_SAVE_INSTANCE_FAILED                   = [31907, HTTP_INTERNAL, "Could not save instance: %s"]
       end
     end
   end
