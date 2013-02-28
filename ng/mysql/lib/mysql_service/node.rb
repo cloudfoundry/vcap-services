@@ -102,7 +102,7 @@ class VCAP::Services::Mysql::Node
 
     keep_alive_interval = KEEP_ALIVE_INTERVAL
     keep_alive_interval = [keep_alive_interval, @connection_wait_timeout.to_f/2].min if @connection_wait_timeout
-    EM.add_periodic_timer(keep_alive_interval) {mysql_keep_alive}
+    EM.add_timer(keep_alive_interval) { EM.defer{mysql_keep_alive(keep_alive_interval)} }
     EM.add_periodic_timer(@max_long_query.to_f/2) { EM.defer{kill_long_queries} } if @max_long_query > 0
     if @max_long_tx > 0
       EM.add_periodic_timer(@max_long_tx.to_f/2) { EM.defer{kill_long_transaction} }
@@ -201,10 +201,11 @@ class VCAP::Services::Mysql::Node
   end
 
   #keep connection alive, and check db liveness
-  def mysql_keep_alive
+  def mysql_keep_alive(keep_alive_interval)
     5.times do
       begin
         each_pool { |conn_pool| conn_pool.keep_alive }
+        EM.add_timer(keep_alive_interval) { EM.defer{mysql_keep_alive(keep_alive_interval)} }
         return
       rescue Mysql2::Error => e
         @logger.error("MySQL connection attempt failed: [#{e.errno}] #{e.error}")
