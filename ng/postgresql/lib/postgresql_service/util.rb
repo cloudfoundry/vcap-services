@@ -1,9 +1,9 @@
 # Copyright (c) 2009-2011 VMware, Inc.
-require 'pg'
 require 'tempfile'
 require 'fileutils'
 require 'open3'
 require 'postgresql_service/pg_timeout'
+require 'postgresql_service/pg_version'
 
 module VCAP
   module Services
@@ -14,6 +14,7 @@ module VCAP
         VALID_CREDENTIAL_CHARACTERS = ("A".."Z").to_a + ("a".."z").to_a + ("0".."9").to_a
 
         include VCAP::Services::Base::Utils
+        include VCAP::Services::Postgresql::Version
 
         def fmt_error(e)
           "#{e}: [#{e.backtrace.join(" | ")}]"
@@ -54,14 +55,6 @@ module VCAP
             @logger.error("Execute cmd:[#{cmd}] failed. Stdin:[#{stdin}], stdout: [#{o}], stderr:[#{e}]")
           end
           return [o, e, s]
-        end
-
-        # Return the version of postgresql
-        def pg_version(conn)
-          return '-1' unless conn
-          version = conn.query("select version()")
-          reg = /([0-9.]{5})/
-          return version[0]['version'].scan(reg)[0][0][0]
         end
 
         def postgresql_connect(host, user, password, port, database, opts={})
@@ -154,7 +147,7 @@ module VCAP
         # Legacy method to revoke privileges of public shcema
         def do_revoke_query(db_connection, user, sys_user)
           db_connection.query("revoke create on schema public from #{user} CASCADE")
-          if pg_version(db_connection) == '9'
+          if pg_version(db_connection) =~ /^9\./
             db_connection.query("REVOKE ALL ON ALL TABLES IN SCHEMA PUBLIC from #{user} CASCADE")
             db_connection.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA PUBLIC from #{user} CASCADE")
             db_connection.query("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA PUBLIC from #{user} CASCADE")
@@ -189,7 +182,7 @@ module VCAP
           end
           version = pg_version(conn)
           conn.query("grant create on schema public to public")
-          if version == '9'
+          if version =~ /^9\./
             conn.query("grant all on all tables in schema public to public")
             conn.query("grant all on all sequences in schema public to public")
             conn.query("grant all on all functions in schema public to public")
@@ -209,7 +202,7 @@ module VCAP
         def grant_schema_write_access(db_connection, schema_id, schema, role)
           return unless db_connection
           db_connection.query("grant create on schema #{schema} to #{role}")
-          if pg_version(db_connection) == '9'
+          if pg_version(db_connection) =~ /^9\./
             db_connection.query("grant all on all tables in schema #{schema} to #{role}")
             db_connection.query("grant all on all sequences in schema #{schema} to #{role}")
             db_connection.query("grant all on all functions in schema #{schema} to #{role}")
@@ -229,7 +222,7 @@ module VCAP
         def revoke_schema_write_access(db_connection, schema_id, schema, role)
           return unless db_connection
           db_connection.query("revoke create on schema #{schema} from #{role} CASCADE")
-          if pg_version(db_connection) == '9'
+          if pg_version(db_connection) =~ /^9\./
             db_connection.query("REVOKE ALL ON ALL TABLES IN SCHEMA #{schema} from #{role} CASCADE")
             db_connection.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA #{schema} from #{role} CASCADE")
             db_connection.query("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA #{schema} from #{role} CASCADE")
@@ -387,7 +380,8 @@ module VCAP
           end
           @logger.info("Deleting database: #{name}")
           begin
-            conn.query("select pg_terminate_backend(procpid) from pg_stat_activity where datname = '#{name}'")
+            version = pg_version(conn)
+            conn.query("select pg_terminate_backend(#{pg_stat_activity_pid_field(version)}) from pg_stat_activity where datname = '#{name}'")
           rescue PGError => e
             @logger.warn("Could not kill database session: #{e}")
           end
@@ -425,10 +419,11 @@ module VCAP
         # Interrupt all activities on database
         def kill_alive_sessions(conn, db, user=nil)
           return unless conn
+          pid_field = pg_stat_activity_pid_field(pg_version(conn))
           unless user
-            conn.query("select pg_terminate_backend(procpid) from pg_stat_activity where datname='#{db}'")
+            conn.query("select pg_terminate_backend(#{pid_field}) from pg_stat_activity where datname='#{db}'")
           else
-            conn.query("select pg_terminate_backend(procpid) from pg_stat_activity where datname='#{db}' and usename = '#{user}'")
+            conn.query("select pg_terminate_backend(#{pid_field}) from pg_stat_activity where datname='#{db}' and usename = '#{user}'")
           end
         end
 
@@ -493,7 +488,6 @@ module VCAP
           disable_db_conn(pgconn, name, service)
           kill_alive_sessions(pgconn, name)
           db_info = get_db_info(pgconn, name)
-          db_version = pg_version(pgconn)
           # we should considering re-set the privileges (such as create/temp ...) for parent role
           drop_db(pgconn, name)
 
@@ -605,21 +599,24 @@ module VCAP
           end
 
           begin
+            version = pg_version(connection)
+            pid_field = pg_stat_activity_pid_field(version)
+            query_field = pg_stat_activity_query_field(version)
             process_list = connection.query(
-              "select * from (select procpid, datname, query_start, usename,
+              "select * from (select #{pid_field} as t_pid, datname, query_start, usename,
               (extract(epoch from current_timestamp) - extract(epoch from query_start)) as run_time,
-              current_query from pg_stat_activity where query_start is not NULL and usename != '#{super_user}'
-              and current_query !='<IDLE>' and current_query != '<IDLE> in transaction')
+              #{query_field} as t_query from pg_stat_activity where query_start is not NULL and usename != '#{super_user}'
+              and #{query_field} !='<IDLE>' and #{query_field} != '<IDLE> in transaction')
               as inner_table  where run_time > #{max_long_query}")
             process_list.each do |proc|
               unless is_default_bind_user(proc["usename"])
                 # Cancel the exact query when exceeding the query time limitation
-                res = connection.query("select pg_cancel_backend(#{proc['procpid']}) from pg_stat_activity
-                                        where procpid = #{proc['procpid']} and current_query = '#{proc['current_query']}'
+                res = connection.query("select pg_cancel_backend(#{proc['t_pid']}) from pg_stat_activity
+                                        where #{pid_field} = #{proc['t_pid']} and #{query_field} = '#{proc['t_query']}'
                                         and query_start = (timestamp '#{proc['query_start']}')")
                 res.each do |cancel_query|
                   if cancel_query['pg_cancel_backend'] == 't'
-                    @logger.info("Killed long query: user:#{proc['usename']} db:#{proc['datname']} time:#{proc['run_time']} info:#{proc['current_query']}")
+                    @logger.info("Killed long query: user:#{proc['usename']} db:#{proc['datname']} time:#{proc['run_time']} info:#{proc['t_query']}")
                     long_queries_killed += 1
                   end
                 end
@@ -639,19 +636,23 @@ module VCAP
             return long_tx_killed
           end
           begin
+            version = pg_version(connection)
+            pid_field = pg_stat_activity_pid_field(version)
+            query_field = pg_stat_activity_query_field(version)
+
             process_list = connection.query(
-              "select * from (select procpid, datname, xact_start, usename,
+              "select * from (select #{pid_field} as t_pid, datname, xact_start, usename,
               (extract(epoch from current_timestamp) - extract(epoch from xact_start)) as run_time,
-              current_query from pg_stat_activity where xact_start is not NULL and usename != '#{super_user}')
+              #{query_field} as t_query from pg_stat_activity where xact_start is not NULL and usename != '#{super_user}')
               as inner_table where run_time > #{max_long_tx}")
             process_list.each do |proc|
               unless is_default_bind_user(proc["usename"])
                 # Terminate the connection when exceeding the transaction time limitation
-                res = connection.query("select current_query, pg_terminate_backend(#{proc['procpid']}) from pg_stat_activity
-                                        where procpid = #{proc['procpid']} and xact_start = (timestamp '#{proc['xact_start']}')")
+                res = connection.query("select #{query_field} as t_query, pg_terminate_backend(#{proc['t_pid']}) from pg_stat_activity
+                                        where #{pid_field} = #{proc['t_pid']} and xact_start = (timestamp '#{proc['xact_start']}')")
                 res.each do |term_query|
                   if term_query['pg_terminate_backend'] == "t"
-                    @logger.info("Killed long transaction: user:#{proc['usename']} db:#{proc['datname']} active_time:#{proc['run_time']} info:#{term_query['current_query']}")
+                    @logger.info("Killed long transaction: user:#{proc['usename']} db:#{proc['datname']} active_time:#{proc['run_time']} info:#{term_query['t_query']}")
                     long_tx_killed += 1
                   end
                 end
