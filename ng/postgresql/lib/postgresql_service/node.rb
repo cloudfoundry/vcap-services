@@ -440,7 +440,7 @@ class VCAP::Services::Postgresql::Node
     db_connection = management_connection(instance, true)
     raise PGError("Fail to connect to database #{db}") unless db_connection
     begin
-      db_connection.query("select pg_terminate_backend(procpid) from pg_stat_activity where usename = '#{binduser.user}' or usename = '#{binduser.sys_user}'")
+      db_connection.query("select pg_terminate_backend(#{pg_stat_activity_pid_field(instance.version)}) from pg_stat_activity where usename = '#{binduser.user}' or usename = '#{binduser.sys_user}'")
     rescue PGError => e
       @logger.warn("Could not kill user session: #{e}")
     end
@@ -448,7 +448,7 @@ class VCAP::Services::Postgresql::Node
     begin
       db_connection.query("DROP OWNED BY #{binduser.user}")
       db_connection.query("DROP OWNED BY #{binduser.sys_user}")
-      if pg_version(db_connection) == '9'
+      if pg_version(db_connection) =~ /^9\./
         db_connection.query("REVOKE ALL ON ALL TABLES IN SCHEMA PUBLIC from #{binduser.user} CASCADE")
         db_connection.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA PUBLIC from #{binduser.user} CASCADE")
         db_connection.query("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA PUBLIC from #{binduser.user} CASCADE")
@@ -546,7 +546,7 @@ class VCAP::Services::Postgresql::Node
     db_connection = management_connection(instance, true)
     raise PGError("Fail to connect to database #{name}") unless db_connection
     block_user_from_db(db_connection, instance)
-    global_connection(instance).query("select pg_terminate_backend(procpid) from pg_stat_activity where datname = '#{name}'")
+    global_connection(instance).query("select pg_terminate_backend(#{pg_stat_activity_pid_field(instance.version)}) from pg_stat_activity where datname = '#{name}'")
     true
   rescue => e
     @logger.error("Error during disable_instance #{fmt_error(e)}")

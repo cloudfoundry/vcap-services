@@ -115,6 +115,8 @@ module VCAP
 
           def service_port
             case version
+            when "9.2"
+              5434
             when "9.1"
               5433
             else
