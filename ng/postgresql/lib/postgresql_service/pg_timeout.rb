@@ -135,6 +135,7 @@ module VCAP
           end
         end
 
+        # using ruby-pg
         class PGDBconn < DBconn
           class << self
             def init(opts={})
